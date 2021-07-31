@@ -159,6 +159,7 @@ void SDFMap::initMap(ros::NodeHandle& nh) {
       node_.subscribe<nav_msgs::Odometry>("/sdf_map/odom", 10, &SDFMap::odomCallback, this);
 
   occ_timer_ = node_.createTimer(ros::Duration(0.05), &SDFMap::updateOccupancyCallback, this);
+  
   esdf_timer_ = node_.createTimer(ros::Duration(0.05), &SDFMap::updateESDFCallback, this);
   vis_timer_ = node_.createTimer(ros::Duration(0.05), &SDFMap::visCallback, this);
 
@@ -701,26 +702,19 @@ void SDFMap::visCallback(const ros::TimerEvent& /*event*/) {
   // publishDepth();
 }
 
+
+
 void SDFMap::updateOccupancyCallback(const ros::TimerEvent& /*event*/) {
   if (!md_.occ_need_update_) return;
 
   /* update occupancy */
   ros::Time t1, t2;
   t1 = ros::Time::now();
-
+  
   // projectDepthImage();
   raycastProcess();
   
-  if (md_.local_updated_) {
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
+  if (md_.local_updated_) {   
     clearAndInflateLocalMap();
   }
 
@@ -968,50 +962,7 @@ inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
 //////////////////////////////////////////////////////////////////////////////////////
 // latest_cloud += latest_lidar_cloud; 
 //////////////////////////////////////////////////////////////////////////////////////
-
   
-//  for (size_t i = 0; i < latest_lidar_cloud.points.size(); ++i) {
-//     pt = latest_lidar_cloud.points[i];    
-//     for (int z_i = -1 ; z_i< 1;z_i = z_i+0.2){
-//          p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z+z_i;
-        
-//     /* point inside update range */
-//     Eigen::Vector3d devi = p3d - md_.camera_pos_;
-//     // Eigen::Vector3d devi = p3d ;
-//     Eigen::Vector3i inf_pt;
-
-//     if (fabs(devi(0)) < mp_.local_update_range_(0) && fabs(devi(1)) < mp_.local_update_range_(1) &&
-//         fabs(devi(2)) < mp_.local_update_range_(2)) {
-
-//       /* inflate the point */
-//       for (int x = -inf_step; x <= inf_step; ++x)
-//         for (int y = -inf_step; y <= inf_step; ++y)
-//           for (int z = -inf_step_z; z <= inf_step_z; ++z) {
-
-//             p3d_inf(0) = pt.x + x * mp_.resolution_;
-//             p3d_inf(1) = pt.y + y * mp_.resolution_;
-//             p3d_inf(2) = pt.z + z * mp_.resolution_;
-
-//             max_x = max(max_x, p3d_inf(0));
-//             max_y = max(max_y, p3d_inf(1));
-//             max_z = max(max_z, p3d_inf(2));
-
-//             min_x = min(min_x, p3d_inf(0));
-//             min_y = min(min_y, p3d_inf(1));
-//             min_z = min(min_z, p3d_inf(2));
-
-//             posToIndex(p3d_inf, inf_pt);
-
-//             if (!isInMap(inf_pt)) continue;
-
-//             int idx_inf = toAddress(inf_pt);
-
-//             md_.occupancy_buffer_inflate_[idx_inf] = 1;
-//           }
-//         }
-//     }
-   
-//   }
  if (mp_.virtual_ceil_height_ > -0.5) {
     int ceil_id = floor((mp_.virtual_ceil_height_ - mp_.map_origin_(2)) * mp_.resolution_inv_);
     for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)

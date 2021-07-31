@@ -257,6 +257,8 @@ private:
   
   // update occupancy by raycasting, and update ESDF  )
   void updateOccupancyCallback(const ros::TimerEvent& /*event*/);
+  
+  
   void updateESDFCallback(const ros::TimerEvent& /*event*/);
   void visCallback(const ros::TimerEvent& /*event*/);
 
@@ -290,7 +292,7 @@ private:
   ros::Subscriber indep_depth_sub_, indep_odom_sub_, indep_pose_sub_, indep_cloud_sub_, lidar_sub;
   ros::Publisher map_pub_, esdf_pub_, map_inf_pub_, update_range_pub_;
   ros::Publisher unknown_pub_, depth_pub_;
-  ros::Timer occ_timer_, esdf_timer_, vis_timer_;
+  ros::Timer occ_timer_, esdf_timer_, vis_timer_, ceiling_ground_timer;
   double sensor_FOV;
   //
 
