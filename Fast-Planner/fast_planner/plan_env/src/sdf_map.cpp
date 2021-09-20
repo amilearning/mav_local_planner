@@ -158,6 +158,7 @@ void SDFMap::initMap(ros::NodeHandle& nh) {
   indep_odom_sub_ =
       node_.subscribe<nav_msgs::Odometry>("/sdf_map/odom", 10, &SDFMap::odomCallback, this);
 
+  
   occ_timer_ = node_.createTimer(ros::Duration(0.05), &SDFMap::updateOccupancyCallback, this);
   esdf_timer_ = node_.createTimer(ros::Duration(0.05), &SDFMap::updateESDFCallback, this);
   vis_timer_ = node_.createTimer(ros::Duration(0.05), &SDFMap::visCallback, this);
@@ -822,13 +823,13 @@ Eigen::Affine3d SDFMap::transformTFToAffine3d(const tf::Transform &t) {
 
 void SDFMap::cloudCallback(const sensor_msgs::PointCloud2ConstPtr& img) {  
   
-  
-  
+
   pcl::PointCloud<pcl::PointXYZ> latest_cloud;
   pcl::PointCloud<pcl::PointXYZ>::Ptr latest_cloud_tmp (new pcl::PointCloud<pcl::PointXYZ>);
-
   pcl::fromROSMsg(*img, *latest_cloud_tmp);
- 
+
+  
+
   // pcl::fromROSMsg(*img, latest_cloud);
   md_.has_cloud_ = true;
   if (!md_.has_odom_) {
@@ -1028,6 +1029,9 @@ inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
             md_.occupancy_buffer_inflate_[toAddress(x, y, ceil_id)] = 1;     
         // }   
       }
+
+  
+
 
   for (size_t i = 0; i < latest_cloud.points.size(); ++i) {
     pt = latest_cloud.points[i];    
