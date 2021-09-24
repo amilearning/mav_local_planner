@@ -34,10 +34,9 @@
     <remap from="/odom_world" to="$(arg odometry_topic)"/>
     <remap from="/sdf_map/odom" to="$(arg odometry_topic)"/>
     <remap from="/sdf_map/cloud" to="$(arg cloud_topic)"/>
+      <remap from="/laser/scan" to="/scan"/>
     <param name="sdf_map/sensor_fov"      value="1.456" /> 
     
-    <!-- <remap from = "/sdf_map/pose"   to = "$(arg camera_pose_topic)"/>  -->
-    <!-- <remap from = "/sdf_map/depth" to = "$(arg depth_topic)"/> -->
 
     <!-- replanning method -->
     <param name="planner_node/planner" value="1" type="int"/>
@@ -66,9 +65,9 @@
     <param name="sdf_map/local_update_range_y"  value="5.5" /> 
     <param name="sdf_map/local_update_range_z"  value="2.5" /> 
     <!-- <param name="sdf_map/obstacles_inflation"     value="0.099" />  -->
-    <param name="sdf_map/obstacles_inflation"     value="0.099" /> 
+    <param name="sdf_map/obstacles_inflation"     value="0.4" /> 
     <param name="sdf_map/local_bound_inflate"    value="0.0"/>
-    <param name="sdf_map/local_map_margin" value="50"/>
+    <param name="sdf_map/local_map_margin" value="5"/>
     <param name="sdf_map/ground_height"        value="0.0"/>
     <!-- camera parameter -->
     <param name="sdf_map/cx" value="$(arg cx)"/>
@@ -111,7 +110,7 @@
     <param name="manager/dynamic_environment" value="0" type="int"/>
     <param name="manager/local_segment_length" value="6.0" type="double"/>
     <param name="manager/clearance_threshold" value="0.2" type="double"/>
-    <param name="manager/control_points_distance" value="0.5" type="double"/>
+    <param name="manager/control_points_distance" value="0.1" type="double"/>
 
     <param name="manager/use_geometric_path" value="false" type="bool"/>
     <param name="manager/use_kinodynamic_path" value="true" type="bool"/>

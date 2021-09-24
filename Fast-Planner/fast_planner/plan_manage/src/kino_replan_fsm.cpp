@@ -351,6 +351,8 @@ bool KinoReplanFSM::callKinodynamicReplan() {
     bspline.yaw_dt = info->yaw_traj_.getInterval();
 
     bspline_pub_.publish(bspline);
+    std_msgs::Empty empty_msg;
+    new_pub_.publish(empty_msg);
 
     /* visulization */
     auto plan_data = &planner_manager_->plan_data_;

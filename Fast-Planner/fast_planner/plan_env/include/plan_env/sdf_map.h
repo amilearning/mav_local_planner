@@ -92,6 +92,7 @@ struct MappingParameters {
   int pose_type_;
   string map_input_;  // 1: pose+depth; 2: odom + cloud
   
+
   /* camera parameters */
   double cx_, cy_, fx_, fy_;
 
@@ -293,7 +294,8 @@ private:
   ros::Timer occ_timer_, esdf_timer_, vis_timer_;
   double sensor_FOV;
   //
-
+  sensor_msgs::LaserScan laser_in_back_left;
+  sensor_msgs::LaserScan laser_in_back_right;
  
   uniform_real_distribution<double> rand_noise_;
   normal_distribution<double> rand_noise2_;
@@ -302,7 +304,7 @@ private:
   tf::TransformListener tf_listener_;
   laser_geometry::LaserProjection projector_;
   sensor_msgs::LaserScan lidar_data; 
-  sensor_msgs::PointCloud2 pcd_from_lidar;
+  sensor_msgs::PointCloud2 pcd_from_lidar, pcd_from_lidar_left_back, pcd_from_lidar_right_back;
   std::string world_frame_;
   std::string robot_frame_; 
   std::string lidar_frame_;

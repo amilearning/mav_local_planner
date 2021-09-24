@@ -192,18 +192,78 @@ void SDFMap::initMap(ros::NodeHandle& nh) {
 }
 
 void SDFMap::lidarCallback(const sensor_msgs::LaserScanConstPtr &scan_in){
+  if(!lidar_sub_done){     
+    laser_in_back_left.angle_min = -3.141958;
+    laser_in_back_left.angle_max = scan_in->angle_min;
+    laser_in_back_left.angle_increment = scan_in->angle_increment;
+    laser_in_back_left.time_increment = scan_in->time_increment;
+    laser_in_back_left.scan_time = scan_in->scan_time;
+    laser_in_back_left.range_min = scan_in->range_min;
+    laser_in_back_left.range_max = scan_in->range_max;
+    for (int i = 0; i < (laser_in_back_left.angle_max - laser_in_back_left.angle_min)/laser_in_back_left.angle_increment+1; i++){
+      laser_in_back_left.ranges.push_back(1.0);
+      laser_in_back_left.intensities.push_back(1000.0);
+    }    
+    laser_in_back_right.angle_min = scan_in->angle_max;
+    laser_in_back_right.angle_max = 3.141958;
+    laser_in_back_right.angle_increment = scan_in->angle_increment;
+    laser_in_back_right.time_increment = scan_in->time_increment;
+    laser_in_back_right.scan_time = scan_in->scan_time;
+    laser_in_back_right.range_min = scan_in->range_min;
+    laser_in_back_right.range_max = scan_in->range_max;
+      for (int i = 0; i < (laser_in_back_right.angle_max - laser_in_back_right.angle_min)/laser_in_back_right.angle_increment+1; i++){
+        laser_in_back_right.ranges.push_back(1.0);
+        laser_in_back_right.intensities.push_back(1000.0);
+      }
+  }
+  laser_in_back_left.header = scan_in->header;
+  laser_in_back_right.header = scan_in->header;
+
   lidar_data =*scan_in;
   lidar_frame_ = scan_in->header.frame_id;
   lidar_sub_done =true;
-    if(!tf_listener_.waitForTransform(
-        scan_in->header.frame_id,
-        "/base_link",
-        scan_in->header.stamp + ros::Duration().fromSec(scan_in->ranges.size()*scan_in->time_increment),
-        ros::Duration(0.1))){
-          ROS_INFO("no such transform from lidar to base link");
-     return;
-  }
-  projector_.transformLaserScanToPointCloud("/base_link",*scan_in,pcd_from_lidar,tf_listener_);
+
+  try { 
+    
+        // tf_listener_.waitForTransform(scan_in->header.frame_id,
+        //                               "/base_link",
+        //                               scan_in->header.stamp+ ros::Duration().fromSec(scan_in->ranges.size()*scan_in->time_increment),
+        //                               ros::Duration(0.5));       
+        
+        projector_.projectLaser (laser_in_back_left,pcd_from_lidar_left_back);
+        // projector_.transformLaserScanToPointCloud("/base_link",laser_in_back_left,pcd_from_lidar_left_back,tf_listener_);
+
+        // tf_listener_.waitForTransform(scan_in->header.frame_id,
+        //                               "/base_link",
+        //                               scan_in->header.stamp+ ros::Duration().fromSec(scan_in->ranges.size()*scan_in->time_increment),
+        //                               ros::Duration(0.5));
+            
+        // projector_.transformLaserScanToPointCloud("/base_link",laser_in_back_right,pcd_from_lidar_right_back,tf_listener_);
+        projector_.projectLaser (laser_in_back_right,pcd_from_lidar_right_back);
+
+        tf_listener_.waitForTransform(scan_in->header.frame_id,
+                                      "/base_link",
+                                      scan_in->header.stamp+ ros::Duration().fromSec(scan_in->ranges.size()*scan_in->time_increment),
+                                      ros::Duration(0.5));
+        
+        projector_.transformLaserScanToPointCloud("/base_link",*scan_in,pcd_from_lidar,tf_listener_);
+    } catch (tf::TransformException& ex) {
+      ROS_ERROR_STREAM(
+          "Error getting TF transform from sensor data: " << ex.what());
+          lidar_sub_done =false;
+      return;
+    }
+
+  //   if(!tf_listener_.waitForTransform(
+  //       scan_in->header.frame_id,
+  //       "/base_link",
+  //       scan_in->header.stamp + ros::Duration().fromSec(scan_in->ranges.size()*scan_in->time_increment),
+  //       ros::Duration(0.1))){
+  //         ROS_INFO("no such transform from lidar to base link");
+  //    return;
+  // }
+  
+  
 
 }
 
@@ -885,6 +945,15 @@ void SDFMap::cloudCallback(const sensor_msgs::PointCloud2ConstPtr& img) {
     pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_cloud_tmp (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::fromROSMsg(pcd_from_lidar, *lidar_cloud_tmp);
 
+    pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_cloud_tmp_left_back (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::fromROSMsg(pcd_from_lidar_left_back, *lidar_cloud_tmp_left_back);
+  
+    pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_cloud_tmp_right_back (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::fromROSMsg(pcd_from_lidar_right_back, *lidar_cloud_tmp_right_back);
+
+    *lidar_cloud_tmp += (*lidar_cloud_tmp_left_back);
+    *lidar_cloud_tmp += (*lidar_cloud_tmp_right_back);
+
 
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr p_obstacles(new pcl::PointCloud<pcl::PointXYZ>);
@@ -894,7 +963,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr p_obstacles(new pcl::PointCloud<pcl::PointXY
   {
     pcl::PointXYZ pt(lidar_cloud_tmp->points[i].x, lidar_cloud_tmp->points[i].y, lidar_cloud_tmp->points[i].z);    
     double point_yaw = atan2( pt.y ,pt.x);             
-    if (abs(point_yaw) < 0.4f) // e.g. remove all pts if it goes beyond FOV of camera 
+    if (abs(point_yaw) < 0.75f) // e.g. remove all pts if it goes beyond FOV of camera 
     { 
       inliers->indices.push_back(i);
     }
