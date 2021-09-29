@@ -40,8 +40,20 @@ int main(int argc, char** argv) {
   ros::init(argc, argv, "fast_planner_node");
   ros::NodeHandle nh("~");
 
-  ros::Nodehandle nh_map();
-  
+  ros::NodeHandle map_nh;  
+
+    ros::CallbackQueue callback_queue_map;
+    map_nh.setCallbackQueue(&callback_queue_map);
+
+
+    std::thread spinner_thread_map([&callback_queue_map]() {
+    ros::SingleThreadedSpinner spinner_map;
+    spinner_map.spin(&callback_queue_map);
+    });
+
+
+    
+   
 
   int planner;
   nh.param("planner_node/planner", planner, -1);
@@ -50,13 +62,14 @@ int main(int argc, char** argv) {
   KinoReplanFSM kino_replan;
 
   if (planner == 1) {
-    kino_replan.init(nh);
+    kino_replan.init(nh,map_nh);
   } else if (planner == 2) {
-    topo_replan.init(nh);
+    topo_replan.init(nh,map_nh);
   }
 
   ros::Duration(1.0).sleep();
   ros::spin();
+  spinner_thread_map.join();
 
   return 0;
 }

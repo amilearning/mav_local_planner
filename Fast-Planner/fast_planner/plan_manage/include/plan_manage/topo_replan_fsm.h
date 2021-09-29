@@ -99,7 +99,7 @@ public:
   TopoReplanFSM(/* args */) {}
   ~TopoReplanFSM() {}
 
-  void init(ros::NodeHandle& nh);
+  void init(ros::NodeHandle& nh,ros::NodeHandle& map_nh);
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };

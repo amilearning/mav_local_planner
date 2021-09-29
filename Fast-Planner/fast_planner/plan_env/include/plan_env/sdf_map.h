@@ -217,7 +217,7 @@ public:
   void getSliceESDF(const double height, const double res, const Eigen::Vector4d& range,
                     vector<Eigen::Vector3d>& slice, vector<Eigen::Vector3d>& grad,
                     int sign = 1);  // 1 pos, 2 neg, 3 combined
-  void initMap(ros::NodeHandle& nh);
+  void initMap(ros::NodeHandle& nh,ros::NodeHandle& map_nh);
 
   void publishMap();
   void publishMapInflate(bool all_info = false);
@@ -250,6 +250,9 @@ private:
   void depthPoseCallback(const sensor_msgs::ImageConstPtr& img,
                          const geometry_msgs::PoseStampedConstPtr& pose);
   void depthOdomCallback(const sensor_msgs::ImageConstPtr& img, const nav_msgs::OdometryConstPtr& odom);
+
+  void odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom, const sensor_msgs::LaserScanConstPtr &scan_in, const sensor_msgs::PointCloud2ConstPtr& img);
+
   void depthCallback(const sensor_msgs::ImageConstPtr& img);
   void cloudCallback(const sensor_msgs::PointCloud2ConstPtr& img);
   void poseCallback(const geometry_msgs::PoseStampedConstPtr& pose);
@@ -281,12 +284,20 @@ private:
   typedef shared_ptr<message_filters::Synchronizer<SyncPolicyImagePose>> SynchronizerImagePose;
   typedef shared_ptr<message_filters::Synchronizer<SyncPolicyImageOdom>> SynchronizerImageOdom;
 
+  typedef message_filters::sync_policies::ApproximateTime<nav_msgs::Odometry,sensor_msgs::LaserScan,sensor_msgs::PointCloud2>
+      SyncPolicyPoseLaserPoints;
+  typedef shared_ptr<message_filters::Synchronizer<SyncPolicyPoseLaserPoints>> SynchronizerPoseLaserPoints;
+
   ros::NodeHandle node_;
+  ros::NodeHandle map_node_;
   shared_ptr<message_filters::Subscriber<sensor_msgs::Image>> depth_sub_;
   shared_ptr<message_filters::Subscriber<geometry_msgs::PoseStamped>> pose_sub_;
   shared_ptr<message_filters::Subscriber<nav_msgs::Odometry>> odom_sub_;
+  shared_ptr<message_filters::Subscriber<sensor_msgs::LaserScan>> lidar_sub_;
+  shared_ptr<message_filters::Subscriber<sensor_msgs::PointCloud2>> point_cloud_sub_;
   SynchronizerImagePose sync_image_pose_;
   SynchronizerImageOdom sync_image_odom_;
+  SynchronizerPoseLaserPoints sync_pose_laser_points_;
 
   ros::Subscriber indep_depth_sub_, indep_odom_sub_, indep_pose_sub_, indep_cloud_sub_, lidar_sub;
   ros::Publisher map_pub_, esdf_pub_, map_inf_pub_, update_range_pub_;

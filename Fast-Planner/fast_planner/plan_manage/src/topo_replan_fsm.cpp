@@ -28,7 +28,7 @@
 
 namespace fast_planner {
 
-void TopoReplanFSM::init(ros::NodeHandle& nh) {
+void TopoReplanFSM::init(ros::NodeHandle& nh,ros::NodeHandle& map_nh) {
   current_wp_  = 0;
   exec_state_  = FSM_EXEC_STATE::INIT;
   have_target_ = false;
@@ -48,7 +48,7 @@ void TopoReplanFSM::init(ros::NodeHandle& nh) {
 
   /* initialize main modules */
   planner_manager_.reset(new FastPlannerManager);
-  planner_manager_->initPlanModules(nh);
+  planner_manager_->initPlanModules(nh,map_nh);
   visualization_.reset(new PlanningVisualization(nh));
 
   /* callback */

@@ -32,9 +32,10 @@
 #include <nav_msgs/Path.h>
 #include <ros/ros.h>
 #include <std_msgs/Empty.h>
+#include <std_msgs/Bool.h>
 #include <vector>
 #include <visualization_msgs/Marker.h>
-
+#include <thread>
 #include <bspline_opt/bspline_optimizer.h>
 #include <path_searching/kinodynamic_astar.h>
 #include <plan_env/edt_environment.h>
@@ -96,11 +97,14 @@ private:
   Eigen::Vector3d start_pt_, start_vel_, start_acc_, start_yaw_;  // start state
   Eigen::Vector3d end_pt_, end_vel_;                              // target state
   int current_wp_;
+  bool local_avoid_switch_;
 
   /* ROS utils */
   ros::NodeHandle node_;
+  ros::NodeHandle map_node_;
+  
   ros::Timer exec_timer_, safety_timer_, vis_timer_, test_something_timer_;
-  ros::Subscriber waypoint_sub_, odom_sub_;
+  ros::Subscriber waypoint_sub_, odom_sub_, local_avoidance_switch_sub_;
   ros::Publisher replan_pub_, new_pub_, bspline_pub_;
 
   /* helper functions */
@@ -115,6 +119,7 @@ private:
   void checkCollisionCallback(const ros::TimerEvent& e);
   void waypointCallback(const nav_msgs::PathConstPtr& msg);
   void odometryCallback(const nav_msgs::OdometryConstPtr& msg);
+  void localAvoidSwitchCallback(const std_msgs::Bool::ConstPtr& msg);
 
 public:
   KinoReplanFSM(/* args */) {
@@ -122,7 +127,7 @@ public:
   ~KinoReplanFSM() {
   }
 
-  void init(ros::NodeHandle& nh);
+  void init(ros::NodeHandle& nh, ros::NodeHandle& map_nh);
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };

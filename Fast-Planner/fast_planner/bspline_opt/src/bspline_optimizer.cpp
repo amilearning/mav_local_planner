@@ -84,7 +84,7 @@ void BsplineOptimizer::setBsplineInterval(const double& ts) { bspline_interval_ 
 
 void BsplineOptimizer::setTerminateCond(const int& max_num_id, const int& max_time_id) {
   max_num_id_  = max_num_id;
-  max_time_id_ = max_time_id;
+  max_time_id_ = max_time_id; 
 }
 
 void BsplineOptimizer::setCostFunction(const int& cost_code) {

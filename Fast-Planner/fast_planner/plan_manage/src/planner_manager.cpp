@@ -35,7 +35,7 @@ FastPlannerManager::FastPlannerManager() {}
 
 FastPlannerManager::~FastPlannerManager() { std::cout << "des manager" << std::endl; }
 
-void FastPlannerManager::initPlanModules(ros::NodeHandle& nh) {
+void FastPlannerManager::initPlanModules(ros::NodeHandle& nh, ros::NodeHandle& map_nh) {
   /* read algorithm parameters */
 
   nh.param("manager/max_vel", pp_.max_vel_, -1.0);
@@ -54,7 +54,7 @@ void FastPlannerManager::initPlanModules(ros::NodeHandle& nh) {
 
   local_data_.traj_id_ = 0;
   sdf_map_.reset(new SDFMap);
-  sdf_map_->initMap(nh);
+  sdf_map_->initMap(nh,map_nh);
   edt_environment_.reset(new EDTEnvironment);
   edt_environment_->setMap(sdf_map_);
 
