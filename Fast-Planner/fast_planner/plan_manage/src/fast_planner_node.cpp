@@ -39,6 +39,8 @@ using namespace fast_planner;
 int main(int argc, char** argv) {
   ros::init(argc, argv, "fast_planner_node");
   ros::NodeHandle nh("~");
+
+  ros::Nodehandle nh_map();
   
 
   int planner;

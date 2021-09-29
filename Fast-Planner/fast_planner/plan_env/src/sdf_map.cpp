@@ -201,7 +201,7 @@ void SDFMap::lidarCallback(const sensor_msgs::LaserScanConstPtr &scan_in){
     laser_in_back_left.range_min = scan_in->range_min;
     laser_in_back_left.range_max = scan_in->range_max;
     for (int i = 0; i < (laser_in_back_left.angle_max - laser_in_back_left.angle_min)/laser_in_back_left.angle_increment+1; i++){
-      laser_in_back_left.ranges.push_back(1.0);
+      laser_in_back_left.ranges.push_back(2.0);
       laser_in_back_left.intensities.push_back(1000.0);
     }    
     laser_in_back_right.angle_min = scan_in->angle_max;
@@ -212,7 +212,7 @@ void SDFMap::lidarCallback(const sensor_msgs::LaserScanConstPtr &scan_in){
     laser_in_back_right.range_min = scan_in->range_min;
     laser_in_back_right.range_max = scan_in->range_max;
       for (int i = 0; i < (laser_in_back_right.angle_max - laser_in_back_right.angle_min)/laser_in_back_right.angle_increment+1; i++){
-        laser_in_back_right.ranges.push_back(1.0);
+        laser_in_back_right.ranges.push_back(2.0);
         laser_in_back_right.intensities.push_back(1000.0);
       }
   }
@@ -525,7 +525,7 @@ void SDFMap::raycastProcess() {
       Eigen::Vector3d tmp = (ray_pt + half) * mp_.resolution_;
       length = (tmp - md_.camera_pos_).norm();
 
-      // if (length < mp_.min_ray_length_) break;
+      if (length < mp_.min_ray_length_) break;
 
       vox_idx = setCacheOccupancy(tmp, 0);
 
@@ -699,7 +699,7 @@ void SDFMap::clearAndInflateLocalMap() {
   // inflate occupied voxels to compensate robot size
 
   int inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
-  // int inf_step_z = 1;
+  int inf_step_z = 1;
   vector<Eigen::Vector3i> inf_pts(pow(2 * inf_step + 1, 3));
   // inf_pts.resize(4 * inf_step + 3);
   Eigen::Vector3i inf_pt;
@@ -715,6 +715,7 @@ void SDFMap::clearAndInflateLocalMap() {
   for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
     for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y)
       for (int z = md_.local_bound_min_(2); z <= md_.local_bound_max_(2); ++z) {
+        // for (int z = -inf_step_z; z <= +inf_step_z; ++z) {
 
         if (md_.occupancy_buffer_[toAddress(x, y, z)] > mp_.min_occupancy_log_) {
           inflatePoint(Eigen::Vector3i(x, y, z), inf_step, inf_pts);
@@ -741,7 +742,8 @@ void SDFMap::clearAndInflateLocalMap() {
       }
   }
  // add ground to limit flight height
-      int ceil_id = floor((0 - mp_.map_origin_(2)) * mp_.resolution_inv_);
+ 
+      int ceil_id = floor((mp_.map_origin_(2)-mp_.map_origin_(2)+0.1) * mp_.resolution_inv_);
     for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
       for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y) {
         //  for (int kk =0 ; kk < 2; ++kk){
@@ -963,7 +965,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr p_obstacles(new pcl::PointCloud<pcl::PointXY
   {
     pcl::PointXYZ pt(lidar_cloud_tmp->points[i].x, lidar_cloud_tmp->points[i].y, lidar_cloud_tmp->points[i].z);    
     double point_yaw = atan2( pt.y ,pt.x);             
-    if (abs(point_yaw) < 0.75f) // e.g. remove all pts if it goes beyond FOV of camera 
+    if (abs(point_yaw) < 0.5f) // e.g. remove all pts if it goes beyond FOV of camera 
     { 
       inliers->indices.push_back(i);
     }
@@ -1090,7 +1092,7 @@ inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
       }
   }
  // add ground to limit flight height
-      int ceil_id = floor((0 - mp_.map_origin_(2)) * mp_.resolution_inv_);
+      int ceil_id = floor(( mp_.map_origin_(2) - mp_.map_origin_(2)) * mp_.resolution_inv_);
     for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
       for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y) {
         //  for (int kk =0 ; kk < 2; ++kk){
@@ -1104,8 +1106,13 @@ inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
 
   for (size_t i = 0; i < latest_cloud.points.size(); ++i) {
     pt = latest_cloud.points[i];    
+    
+    if( sqrt( pow(pt.x,2) + pow(pt.y,2) + pow(pt.z,2)) < mp_.min_ray_length_){
+        continue;
+      }
+      
     p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z;
-  
+
     
     /* point inside update range */
     Eigen::Vector3d devi = p3d - md_.camera_pos_;

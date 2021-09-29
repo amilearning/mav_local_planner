@@ -212,13 +212,21 @@ void KinoReplanFSM::execFSMCallback(const ros::TimerEvent& e) {
       ros::Time      time_now = ros::Time::now();
       double         t_cur    = (time_now - info->start_time_).toSec();
 
-      start_pt_  = info->position_traj_.evaluateDeBoorT(t_cur);
-      start_vel_ = info->velocity_traj_.evaluateDeBoorT(t_cur);
-      start_acc_ = info->acceleration_traj_.evaluateDeBoorT(t_cur);
+      start_pt_  = odom_pos_;      
+      start_vel_ = odom_vel_;
+      start_acc_.setZero();      
 
-      start_yaw_(0) = info->yaw_traj_.evaluateDeBoorT(t_cur)[0];
-      start_yaw_(1) = info->yawdot_traj_.evaluateDeBoorT(t_cur)[0];
-      start_yaw_(2) = info->yawdotdot_traj_.evaluateDeBoorT(t_cur)[0];
+      // start_pt_  = info->position_traj_.evaluateDeBoorT(t_cur);
+      // start_vel_ = info->velocity_traj_.evaluateDeBoorT(t_cur);
+      // start_acc_ = info->acceleration_traj_.evaluateDeBoorT(t_cur);
+
+      // start_yaw_(0) = info->yaw_traj_.evaluateDeBoorT(t_cur)[0];
+      // start_yaw_(1) = info->yawdot_traj_.evaluateDeBoorT(t_cur)[0];
+      // start_yaw_(2) = info->yawdotdot_traj_.evaluateDeBoorT(t_cur)[0];
+
+      Eigen::Vector3d rot_x = odom_orient_.toRotationMatrix().block(0, 0, 3, 1);
+      start_yaw_(0)         = atan2(rot_x(1), rot_x(0));
+      start_yaw_(1) = start_yaw_(2) = 0.0;
 
       std_msgs::Empty replan_msg;
       replan_pub_.publish(replan_msg);

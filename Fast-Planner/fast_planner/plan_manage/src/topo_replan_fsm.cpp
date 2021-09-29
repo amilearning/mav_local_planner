@@ -82,7 +82,7 @@ void TopoReplanFSM::waypointCallback(const nav_msgs::PathConstPtr& msg) {
     if (target_type_ == TARGET_TYPE::MANUAL_TARGET) {
       target_point_(0) = msg->poses[0].pose.position.x;
       target_point_(1) = msg->poses[0].pose.position.y;
-      target_point_(2) = 1.0;
+      target_point_(2) = 0.8;
       std::cout << "manual: " << target_point_.transpose() << std::endl;
 
     } else if (target_type_ == TARGET_TYPE::PRESET_TARGET) {
@@ -353,7 +353,7 @@ void TopoReplanFSM::checkCollisionCallback(const ros::TimerEvent& e) {
     double dist;
     bool   safe = planner_manager_->checkTrajCollision(dist);
     if (!safe) {
-      if (dist > 0.5) {
+      if (dist > 0.8) {
         ROS_WARN("current traj %lf m to collision", dist);
         collide_ = true;
         changeFSMExecState(REPLAN_TRAJ, "SAFETY");
