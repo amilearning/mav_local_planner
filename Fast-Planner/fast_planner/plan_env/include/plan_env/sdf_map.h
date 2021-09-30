@@ -92,6 +92,7 @@ struct MappingParameters {
   int pose_type_;
   string map_input_;  // 1: pose+depth; 2: odom + cloud
   
+  
 
   /* camera parameters */
   double cx_, cy_, fx_, fy_;
@@ -185,6 +186,12 @@ public:
   // occupancy map management
   void resetBuffer();
   void resetBuffer(Eigen::Vector3d min, Eigen::Vector3d max);
+   inline void truncateYaw(double& x) {
+    if (x > M_PI)
+      x -= 2 * M_PI;
+    else if (x < -M_PI)
+      x += 2 * M_PI;
+  }
 
   inline void posToIndex(const Eigen::Vector3d& pos, Eigen::Vector3i& id);
   inline void indexToPos(const Eigen::Vector3i& id, Eigen::Vector3d& pos);
@@ -304,6 +311,7 @@ private:
   ros::Publisher unknown_pub_, depth_pub_;
   ros::Timer occ_timer_, esdf_timer_, vis_timer_;
   double sensor_FOV;
+  double current_yaw;
   //
   sensor_msgs::LaserScan laser_in_back_left;
   sensor_msgs::LaserScan laser_in_back_right;

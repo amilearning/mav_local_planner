@@ -41,16 +41,23 @@ int main(int argc, char** argv) {
   ros::NodeHandle nh("~");
 
   ros::NodeHandle map_nh;  
+  ros::NodeHandle service_nh;  
 
     ros::CallbackQueue callback_queue_map;
     map_nh.setCallbackQueue(&callback_queue_map);
-
 
     std::thread spinner_thread_map([&callback_queue_map]() {
     ros::SingleThreadedSpinner spinner_map;
     spinner_map.spin(&callback_queue_map);
     });
+///////////////
+    ros::CallbackQueue callback_queue_service;
+    service_nh.setCallbackQueue(&callback_queue_service);
 
+    std::thread spinner_thread_service([&callback_queue_service]() {
+    ros::SingleThreadedSpinner spinner_service;
+    spinner_service.spin(&callback_queue_service);
+    });
 
     
    
@@ -62,7 +69,7 @@ int main(int argc, char** argv) {
   KinoReplanFSM kino_replan;
 
   if (planner == 1) {
-    kino_replan.init(nh,map_nh);
+    kino_replan.init(nh,map_nh,service_nh);
   } else if (planner == 2) {
     topo_replan.init(nh,map_nh);
   }
@@ -70,6 +77,7 @@ int main(int argc, char** argv) {
   ros::Duration(1.0).sleep();
   ros::spin();
   spinner_thread_map.join();
+  spinner_thread_service.join();
 
   return 0;
 }

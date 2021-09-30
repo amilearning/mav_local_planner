@@ -127,7 +127,7 @@ public:
   ~KinoReplanFSM() {
   }
 
-  void init(ros::NodeHandle& nh, ros::NodeHandle& map_nh);
+  void init(ros::NodeHandle& nh, ros::NodeHandle& map_nh, ros::NodeHandle& service_nh);
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };

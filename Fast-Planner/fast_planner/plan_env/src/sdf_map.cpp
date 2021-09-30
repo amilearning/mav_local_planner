@@ -1523,6 +1523,12 @@ void SDFMap::odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom,
   md_.camera_pos_(2) = odom->pose.pose.position.z;
   // md_.camera_q_ = Eigen::Quaterniond(odom->pose.pose.orientation.w, odom->pose.pose.orientation.x,
   //                                     odom->pose.pose.orientation.y, odom->pose.pose.orientation.z);
+
+    tf::Quaternion q_(odom->pose.pose.orientation.w, odom->pose.pose.orientation.x,odom->pose.pose.orientation.y, odom->pose.pose.orientation.z);
+    tf::Matrix3x3 m(q_);            
+    double roll, pitch, yaw;
+    m.getRPY(roll, pitch, yaw);        
+    current_yaw = yaw;
   if (isInMap(md_.camera_pos_)) {
     md_.has_odom_ = true;
     md_.update_num_ += 1;
@@ -1669,21 +1675,23 @@ void SDFMap::odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom,
     *lidar_cloud_tmp += (*lidar_cloud_tmp_right_back);
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr p_obstacles(new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
-  pcl::ExtractIndices<pcl::PointXYZ> extract;
-  for (int i = 0; i < (*lidar_cloud_tmp).size(); i++)
-  {
-    pcl::PointXYZ pt(lidar_cloud_tmp->points[i].x, lidar_cloud_tmp->points[i].y, lidar_cloud_tmp->points[i].z);    
-    double point_yaw = atan2( pt.y ,pt.x);             
-    if (abs(point_yaw) < 0.6f) // e.g. remove all pts if it goes beyond FOV of camera 
-    { 
-      inliers->indices.push_back(i);
-    }
-  }
-  extract.setInputCloud(lidar_cloud_tmp);
-  extract.setIndices(inliers);
-  extract.setNegative(true);
-  extract.filter(*lidar_cloud_tmp);
+
+//////////////////////////////// FILTER points inside of field of view ///////////////////
+  // pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
+  // pcl::ExtractIndices<pcl::PointXYZ> extract;
+  // for (int i = 0; i < (*lidar_cloud_tmp).size(); i++)
+  // {
+  //   pcl::PointXYZ pt(lidar_cloud_tmp->points[i].x, lidar_cloud_tmp->points[i].y, lidar_cloud_tmp->points[i].z);    
+  //   double point_yaw = atan2( pt.y ,pt.x);             
+  //   if (abs(point_yaw) < 0.6f) // e.g. remove all pts if it goes beyond FOV of camera 
+  //   { 
+  //     inliers->indices.push_back(i);
+  //   }
+  // }
+  // extract.setInputCloud(lidar_cloud_tmp);
+  // extract.setIndices(inliers);
+  // extract.setNegative(true);
+  // extract.filter(*lidar_cloud_tmp);
 
     tf::StampedTransform lidar_to_world;
     try {
@@ -1702,23 +1710,31 @@ void SDFMap::odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom,
     inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
     for (size_t i = 0; i < latest_lidar_cloud.points.size(); ++i) {
       pt = latest_lidar_cloud.points[i]; 
-      for (double kk=-(pt.z); kk<(3-pt.z) ; kk=kk+mp_.obstacles_inflation_){      
-          p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z+kk;            
+////////////////////////////////////////////
+      //// check if the points inside of camera field of view 
+////////////////////////////////////////////
+      double angle_from_point = (pt.y - md_.camera_pos_(1)) / (md_.camera_pos_(0) - pt.x);
+      truncateYaw(angle_from_point);
+    if (fabs(angle_from_point) < 0.785f){
+////////////////////////////////////////////
+         p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z;            
           /* point inside update range */
           Eigen::Vector3d devi = p3d - md_.camera_pos_;
+          if (fabs(devi(0)) < 0.6 && fabs(devi(1)) < 0.6 ) continue;
           // Eigen::Vector3d devi = p3d ;
-          Eigen::Vector3i inf_pt;
-          if (fabs(devi(0)) < mp_.local_update_range_(0)-mp_.obstacles_inflation_ && fabs(devi(1)) < mp_.local_update_range_(1)-mp_.obstacles_inflation_ &&
-              fabs(devi(2)) < mp_.local_update_range_(2)-mp_.obstacles_inflation_) {
-          
+          Eigen::Vector3i inf_pt;              
+        
+
+          if (fabs(devi(0)) < mp_.local_update_range_(0)-mp_.obstacles_inflation_-mp_.resolution_ && fabs(devi(1)) < mp_.local_update_range_(1)-mp_.obstacles_inflation_ -mp_.resolution_&&
+              fabs(devi(2)) < mp_.local_update_range_(2)) {          
             /* inflate the point */
             for (int x = -inf_step; x <= inf_step; ++x)
               for (int y = -inf_step; y <= inf_step; ++y)
-                for (int z = -inf_step; z <= inf_step; ++z) {
+                for (int z = -inf_step_z; z <= inf_step_z; ++z) {
 
                   p3d_inf(0) = pt.x + x * mp_.resolution_;
                   p3d_inf(1) = pt.y + y * mp_.resolution_;
-                  p3d_inf(2) = pt.z +kk+ z * mp_.resolution_;
+                  p3d_inf(2) = pt.z + z * mp_.resolution_;
 
                   max_x = max(max_x, p3d_inf(0));
                   max_y = max(max_y, p3d_inf(1));
@@ -1731,13 +1747,59 @@ void SDFMap::odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom,
                   posToIndex(p3d_inf, inf_pt);
 
                   if (!isInMap(inf_pt)) continue;
+                  //skip points inside of robot dimension 
+                  Eigen::Vector3d devi_local = p3d_inf-md_.camera_pos_;     
+                  if (fabs(devi_local(0)) < 0.6 && fabs(devi_local(1)) < 0.6 ) continue;
 
                   int idx_inf = toAddress(inf_pt);
 
                   md_.occupancy_buffer_inflate_[idx_inf] = 1;
                 }
             }
-        }
+
+      } else{
+      //// /// laser data over the field of view (create virtual wall)
+            for (double kk=-(pt.z); kk<(3-pt.z) ; kk=kk+mp_.obstacles_inflation_){      
+                p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z+kk;            
+                /* point inside update range */
+                Eigen::Vector3d devi = p3d - md_.camera_pos_;
+                if (fabs(devi(0)) < 0.6 && fabs(devi(1)) < 0.6 ) continue;
+                // Eigen::Vector3d devi = p3d ;
+                Eigen::Vector3i inf_pt;
+                if (fabs(devi(0)) < mp_.local_update_range_(0)-mp_.obstacles_inflation_-mp_.resolution_ && fabs(devi(1)) < mp_.local_update_range_(1)-mp_.obstacles_inflation_ -mp_.resolution_&&
+                    fabs(devi(2)) < mp_.local_update_range_(2)) {
+                
+                  /* inflate the point */
+                  for (int x = -inf_step; x <= inf_step; ++x)
+                    for (int y = -inf_step; y <= inf_step; ++y)
+                      for (int z = -inf_step; z <= inf_step; ++z) {
+
+                        p3d_inf(0) = pt.x + x * mp_.resolution_;
+                        p3d_inf(1) = pt.y + y * mp_.resolution_;
+                        p3d_inf(2) = pt.z +kk+ z * mp_.resolution_;
+
+                        max_x = max(max_x, p3d_inf(0));
+                        max_y = max(max_y, p3d_inf(1));
+                        max_z = max(max_z, p3d_inf(2));
+
+                        min_x = min(min_x, p3d_inf(0));
+                        min_y = min(min_y, p3d_inf(1));
+                        min_z = min(min_z, p3d_inf(2));
+
+                        posToIndex(p3d_inf, inf_pt);
+
+                        if (!isInMap(inf_pt)) continue;
+                         //skip points inside of robot dimension 
+                        Eigen::Vector3d devi_local =  p3d_inf-md_.camera_pos_;     
+                        if (fabs(devi_local(0)) < 0.6 && fabs(devi_local(1)) < 0.6 ) continue;
+
+                        int idx_inf = toAddress(inf_pt);
+
+                        md_.occupancy_buffer_inflate_[idx_inf] = 1;
+                      }
+                  }
+              }
+          }
     } 
   }
 inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);  
@@ -1765,12 +1827,14 @@ inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
 
   for (size_t i = 0; i < latest_cloud.points.size(); ++i) {
     pt = latest_cloud.points[i];    
-    
-    if( sqrt( pow((pt.x-md_.camera_pos_[0]),2) 
+    double dist_to_pt = sqrt( pow((pt.x-md_.camera_pos_[0]),2) 
               +pow((pt.y-md_.camera_pos_[1]),2) 
-              +pow((pt.z-md_.camera_pos_[2]),2) ) < mp_.min_ray_length_){
+              +pow((pt.z-md_.camera_pos_[2]),2) ); 
+
+    if(  dist_to_pt < mp_.min_ray_length_ || dist_to_pt >  mp_.max_ray_length_){
         continue;
       }
+
       
     p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z;
 
