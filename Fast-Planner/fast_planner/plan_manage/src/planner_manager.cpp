@@ -127,7 +127,22 @@ bool FastPlannerManager::checkTrajCollision(double& distance) {
 bool FastPlannerManager::kinodynamicReplan(Eigen::Vector3d start_pt, Eigen::Vector3d start_vel,
                                            Eigen::Vector3d start_acc, Eigen::Vector3d end_pt,
                                            Eigen::Vector3d end_vel) {
-
+    
+                                             
+    sdf_map_->fix_map_update(); 
+    bool get_map_update_done = sdf_map_->get_map_update_done();
+    for(int i=0;i<5;i++){
+        if(get_map_update_done){
+          break;
+      }
+        ros::Duration(0.05).sleep();         
+    } 
+    if(!get_map_update_done){
+      return false;
+    }
+    
+  
+    
   std::cout << "[kino replan]: -----------------------" << std::endl;
   cout << "start: " << start_pt.transpose() << ", " << start_vel.transpose() << ", "
        << start_acc.transpose() << "\ngoal:" << end_pt.transpose() << ", " << end_vel.transpose()
@@ -135,6 +150,7 @@ bool FastPlannerManager::kinodynamicReplan(Eigen::Vector3d start_pt, Eigen::Vect
 
   if ((start_pt - end_pt).norm() < 0.2) {
     cout << "Close goal" << endl;
+     sdf_map_->rerun_map_update();
     return false;
   }
 
@@ -163,7 +179,8 @@ bool FastPlannerManager::kinodynamicReplan(Eigen::Vector3d start_pt, Eigen::Vect
     status = kino_path_finder_->search(start_pt, start_vel, start_acc, end_pt, end_vel, false);
 
     if (status == KinodynamicAstar::NO_PATH) {
-      cout << "[kino replan]: Can't find path." << endl;
+      cout << "[kino replan]: Can't find path." << endl;      
+       sdf_map_->rerun_map_update();
       return false;
     } else {
       cout << "[kino replan]: retry search success." << endl;
@@ -241,7 +258,8 @@ bool FastPlannerManager::kinodynamicReplan(Eigen::Vector3d start_pt, Eigen::Vect
   pp_.time_adjust_   = t_adjust;
 
   updateTrajInfo();
-
+  
+  sdf_map_->rerun_map_update();
   return true;
 }
 

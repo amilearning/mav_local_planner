@@ -232,7 +232,19 @@ public:
   void publishUpdateRange();
 
   void publishUnknown();
-  void publishDepth();
+  void publishDepth();  
+  // void set_map_reset(bool msg);
+  // bool get_map_fill();
+
+  void fix_map_update();  
+  bool get_map_update_done();
+  bool rerun_map_update();
+  bool map_reset_done;
+  bool map_reset_switch;
+
+  bool map_update_done;
+  bool map_update_off_switch;  
+
 
   void checkDist();
   bool hasDepthObservation();
@@ -312,6 +324,8 @@ private:
   ros::Timer occ_timer_, esdf_timer_, vis_timer_;
   double sensor_FOV;
   double current_yaw;
+  // bool map_resetting;
+  // bool cur_map_fill;
   //
   sensor_msgs::LaserScan laser_in_back_left;
   sensor_msgs::LaserScan laser_in_back_right;

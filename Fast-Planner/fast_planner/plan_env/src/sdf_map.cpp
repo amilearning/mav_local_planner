@@ -261,25 +261,48 @@ void SDFMap::lidarCallback(const sensor_msgs::LaserScanConstPtr &scan_in){
 }
 
 void SDFMap::resetBuffer() {
-  Eigen::Vector3d min_pos = mp_.map_min_boundary_;
-  Eigen::Vector3d max_pos = mp_.map_max_boundary_;
 
-  resetBuffer(min_pos, max_pos);
+   bool trigger_=false;
+  if(map_reset_switch){     
+      if(map_reset_done){
+        trigger_=false;        
+      }else{          
+          trigger_ = true;
+          map_reset_done = true;
+      }    
+  }
+  else{
+    trigger_=true;
+    map_reset_done = false;
+  }
 
-  md_.local_bound_min_ = Eigen::Vector3i::Zero();
-  md_.local_bound_max_ = mp_.map_voxel_num_ - Eigen::Vector3i::Ones();
+  if(!trigger_){
+    return;
+  }
+
+
+    Eigen::Vector3d min_pos = mp_.map_min_boundary_;
+    Eigen::Vector3d max_pos = mp_.map_max_boundary_;
+    resetBuffer(min_pos, max_pos);
+    md_.local_bound_min_ = Eigen::Vector3i::Zero();
+    md_.local_bound_max_ = mp_.map_voxel_num_ - Eigen::Vector3i::Ones();
+    
+  
 }
 
 
 void SDFMap::resetBuffer(Eigen::Vector3d min_pos, Eigen::Vector3d max_pos) {
-
+  
+  // if(!map_resetting){
+  //   return;
+  // }
   Eigen::Vector3i min_id, max_id;
   posToIndex(min_pos, min_id);
   posToIndex(max_pos, max_id);
 
   boundIndex(min_id);
   boundIndex(max_id);
-
+ 
   /* reset occ and dist buffer */
   for (int x = min_id(0); x <= max_id(0); ++x)
     for (int y = min_id(1); y <= max_id(1); ++y)
@@ -287,6 +310,7 @@ void SDFMap::resetBuffer(Eigen::Vector3d min_pos, Eigen::Vector3d max_pos) {
         md_.occupancy_buffer_inflate_[toAddress(x, y, z)] = 0;
         md_.distance_buffer_[toAddress(x, y, z)] = 10000;
       }
+  // cur_map_fill = false;
 }
 
 template <typename F_get_val, typename F_set_val>
@@ -619,7 +643,8 @@ Eigen::Vector3d SDFMap::closetPointInMap(const Eigen::Vector3d& pt, const Eigen:
 
 void SDFMap::clearAndInflateLocalMap() {
   /*clear outside local*/
-  // ROS_INFO("dddddd");
+  ROS_INFO("@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+  
   const int vec_margin = 5;
   // Eigen::Vector3i min_vec_margin = min_vec - Eigen::Vector3i(vec_margin,
   // vec_margin, vec_margin); Eigen::Vector3i max_vec_margin = max_vec +
@@ -640,7 +665,7 @@ void SDFMap::clearAndInflateLocalMap() {
  
 
   // clear data outside the local range
-
+  
   for (int x = min_cut_m(0); x <= max_cut_m(0); ++x)
     for (int y = min_cut_m(1); y <= max_cut_m(1); ++y) {
    
@@ -696,7 +721,7 @@ void SDFMap::clearAndInflateLocalMap() {
   vector<Eigen::Vector3i> inf_pts(pow(2 * inf_step + 1, 3));
   // inf_pts.resize(4 * inf_step + 3);
   Eigen::Vector3i inf_pt;
-
+  
   // clear outdated data
   for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
     for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y)
@@ -813,6 +838,7 @@ void SDFMap::updateESDFCallback(const ros::TimerEvent& /*event*/) {
              md_.esdf_time_ / md_.update_num_, md_.max_esdf_time_);
 
   md_.esdf_need_update_ = false;
+  
 }
 
 void SDFMap::depthPoseCallback(const sensor_msgs::ImageConstPtr& img,
@@ -842,6 +868,15 @@ void SDFMap::depthPoseCallback(const sensor_msgs::ImageConstPtr& img,
     md_.occ_need_update_ = false;
   }
 }
+// void SDFMap::set_map_reset(bool msg){
+//    map_resetting = msg;
+//    if(map_resetting){
+//      cur_map_fill = false;
+//    }
+// }
+// bool SDFMap::get_map_fill(){
+//   return cur_map_fill;
+// }
 
 void SDFMap::odomCallback(const nav_msgs::OdometryConstPtr& odom) {
   // if (md_.has_first_depth_) return;
@@ -1529,6 +1564,11 @@ void SDFMap::odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom,
     double roll, pitch, yaw;
     m.getRPY(roll, pitch, yaw);        
     current_yaw = yaw;
+
+    // if(!map_resetting && cur_map_fill){
+    // return;
+    // } 
+    
   if (isInMap(md_.camera_pos_)) {
     md_.has_odom_ = true;
     md_.update_num_ += 1;
@@ -1537,10 +1577,29 @@ void SDFMap::odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom,
     md_.occ_need_update_ = false;
   }
 
+//////////////////////////////////////////////////////////////
+  
+  bool trigger_=false;
+  if(map_update_off_switch){     
+      if(map_update_done || map_reset_done){
+        trigger_=false;        
+      }else{          
+          trigger_ = true;
+          map_update_done = true;
+      }    
+  }
+  else{
+    trigger_=true;
+    map_update_done = false;
+  }
+ 
+  if(!trigger_ ){
+    return;
+  }
   //////////////////////////////////////////////
   /////////////////////////////////////////////
   ////////////////////////////////////////////
-
+  
    if(!lidar_sub_done){     
     laser_in_back_left.angle_min = -3.141958;
     laser_in_back_left.angle_max = scan_in->angle_min;
@@ -1713,7 +1772,7 @@ void SDFMap::odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom,
 ////////////////////////////////////////////
       //// check if the points inside of camera field of view 
 ////////////////////////////////////////////
-      double angle_from_point = (pt.y - md_.camera_pos_(1)) / (md_.camera_pos_(0) - pt.x);
+      double angle_from_point = (pt.y - md_.camera_pos_(1)) / ( pt.x- md_.camera_pos_(0));
       truncateYaw(angle_from_point);
     if (fabs(angle_from_point) < 0.785f){
 ////////////////////////////////////////////
@@ -1892,6 +1951,7 @@ inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
   boundIndex(md_.local_bound_max_);
 
   md_.esdf_need_update_ = true;
+  // cur_map_fill = true;
 
 
 }
@@ -1928,4 +1988,19 @@ void SDFMap::poseCallback(const geometry_msgs::PoseStampedConstPtr& pose) {
   md_.camera_pos_(2) = pose->pose.position.z;
 }
 
+void SDFMap::fix_map_update(){
+   map_reset_done = false;
+   map_reset_switch = true;
+   map_update_done = false; 
+   map_update_off_switch = true;  
+}
+bool SDFMap::get_map_update_done(){
+  return map_update_done;
+}
+bool SDFMap::rerun_map_update(){
+    // map_reset_done = false;
+   map_reset_switch = false;
+  //  map_update_done = false; 
+   map_update_off_switch = false;  
+}
 // SDFMap
