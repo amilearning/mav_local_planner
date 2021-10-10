@@ -2,7 +2,7 @@
   <!-- size of map, change the size in x, y, z according to your application -->
   <arg name="map_size_x" value="50.0"/>
   <arg name="map_size_y" value="50.0"/>
-  <arg name="map_size_z" value="2.5"/>
+  <arg name="map_size_z" value="3.0"/>
 
   <!-- topic of your odometry such as VIO or LIO -->
   <arg name="odom_topic" value="/mavros/local_position/odom" />
@@ -32,8 +32,11 @@
     <arg name="fy" value="387.229248046875"/>
 
     <!-- maximum velocity and acceleration the drone will reach -->
-    <arg name="max_vel" value="0.6" />
-    <arg name="max_acc" value="0.7" />
+    <arg name="max_vel" value="1.0" />
+    <arg name="max_acc" value="0.5" />
+
+    <!-- <arg name="max_vel" value="0.4" />
+    <arg name="max_acc" value="0.5" /> -->
 
     <!-- 1: use 2D Nav Goal to select goal  -->
     <!-- 2: use global waypoints below  -->

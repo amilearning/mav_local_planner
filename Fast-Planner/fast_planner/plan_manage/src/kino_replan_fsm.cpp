@@ -33,7 +33,7 @@ void KinoReplanFSM::init(ros::NodeHandle& nh, ros::NodeHandle& map_nh, ros::Node
   exec_state_  = FSM_EXEC_STATE::INIT;
   have_target_ = false;
   have_odom_   = false;
-
+  trigger_waypoints = false;
   /*  fsm param  */
   nh.param("fsm/flight_type", target_type_, -1);
   nh.param("fsm/thresh_replan", replan_thresh_, -1.0);
@@ -60,7 +60,6 @@ void KinoReplanFSM::init(ros::NodeHandle& nh, ros::NodeHandle& map_nh, ros::Node
   odom_sub_ = nh.subscribe("/odom_world", 1, &KinoReplanFSM::odometryCallback, this);
   local_avoidance_switch_sub_ = service_nh.subscribe("/local_avoidance_switch", 1, &KinoReplanFSM::localAvoidSwitchCallback, this);
   
-  
 
   replan_pub_  = nh.advertise<std_msgs::Empty>("/planning/replan", 10);
   new_pub_     = nh.advertise<std_msgs::Empty>("/planning/new", 10);
@@ -71,10 +70,38 @@ void KinoReplanFSM::localAvoidSwitchCallback(const std_msgs::Bool::ConstPtr& msg
   local_avoid_switch_ = msg->data;
 }
 
+
 void KinoReplanFSM::waypointCallback(const nav_msgs::PathConstPtr& msg) {
   if (msg->poses[0].pose.position.z < -0.1) return;
 
+  if(msg->poses[0].pose.position.z > 0.9){
+    trigger_waypoints = true;
+    visualization_->drawGoal(end_pt_, 0.3, Eigen::Vector4d(1, 0, 0, 1.0));
+    end_vel_.setZero();
+    have_target_ = true;
+
+    if (exec_state_ == WAIT_TARGET)
+    changeFSMExecState(GEN_NEW_TRAJ, "TRIG");
+    else if (exec_state_ == EXEC_TRAJ)
+    changeFSMExecState(REPLAN_TRAJ, "TRIG");
+
+  }else{
+    trigger_waypoints = false;
+  }
+  // odom_pos_
+  //global_direction 
+  //global_direction_max_distance
+  
+  
+  ///////////////////////////////////////////////////
+  // Below is the original waypoint subscriber 
+  // return;
+  ///////////////////////////////////////////////
   cout << "Triggered!" << endl;
+
+    if(trigger_waypoints){
+        return;
+      }
   trigger_ = true;
 
   if (target_type_ == TARGET_TYPE::MANUAL_TARGET) {
@@ -118,13 +145,13 @@ void KinoReplanFSM::changeFSMExecState(FSM_EXEC_STATE new_state, string pos_call
   string state_str[5] = { "INIT", "WAIT_TARGET", "GEN_NEW_TRAJ", "REPLAN_TRAJ", "EXEC_TRAJ" };
   int    pre_s        = int(exec_state_);
   exec_state_         = new_state;
-  cout << "[" + pos_call + "]: from " + state_str[pre_s] + " to " + state_str[int(new_state)] << endl;
+  // cout << "[" + pos_call + "]: from " + state_str[pre_s] + " to " + state_str[int(new_state)] << endl;
 }
 
 void KinoReplanFSM::printFSMExecState() {
   string state_str[5] = { "INIT", "WAIT_TARGET", "GEN_NEW_TRAJ", "REPLAN_TRAJ", "EXEC_TRAJ" };
 
-  cout << "[FSM]: state: " + state_str[int(exec_state_)] << endl;
+  // cout << "[FSM]: state: " + state_str[int(exec_state_)] << endl;
 }
 
 void KinoReplanFSM::execFSMCallback(const ros::TimerEvent& e) {
@@ -132,8 +159,8 @@ void KinoReplanFSM::execFSMCallback(const ros::TimerEvent& e) {
   fsm_num++;
   if (fsm_num == 100) {
     printFSMExecState();
-    if (!have_odom_) cout << "no odom." << endl;
-    if (!trigger_) cout << "wait for goal." << endl;
+    // if (!have_odom_) cout << "no odom." << endl;
+    // if (!trigger_) cout << "wait for goal." << endl;
     fsm_num = 0;
   }
 
@@ -171,9 +198,9 @@ void KinoReplanFSM::execFSMCallback(const ros::TimerEvent& e) {
       if (success) {
         changeFSMExecState(EXEC_TRAJ, "FSM");
       } else {
-        // have_target_ = false;
-        // changeFSMExecState(WAIT_TARGET, "FSM");
-        changeFSMExecState(GEN_NEW_TRAJ, "FSM");
+        have_target_ = false;
+        changeFSMExecState(WAIT_TARGET, "FSM");
+        // changeFSMExecState(GEN_NEW_TRAJ, "FSM");
       }
       break;
     }
@@ -185,8 +212,7 @@ void KinoReplanFSM::execFSMCallback(const ros::TimerEvent& e) {
       double         t_cur    = (time_now - info->start_time_).toSec();
       t_cur                   = min(info->duration_, t_cur);
       Eigen::Vector3d pos = info->position_traj_.evaluateDeBoorT(t_cur);
-      if(local_avoid_switch_){
-          
+      if(local_avoid_switch_){          
          pos  = odom_pos_;
       }
 
@@ -256,6 +282,57 @@ void KinoReplanFSM::execFSMCallback(const ros::TimerEvent& e) {
 }
 
 void KinoReplanFSM::checkCollisionCallback(const ros::TimerEvent& e) {
+
+  if(local_avoid_switch_){
+    changeFSMExecState(WAIT_TARGET, "SAFETY");
+    ROS_INFO("local avoidance switch true");
+  }
+  
+  ///////////////////////////////////////////////////
+  ///////////////////////////////////////////////  
+  
+  global_direction = planner_manager_->get_global_direction();  
+  global_direction_max_distance = fabs(planner_manager_->get_global_direction_max_distance());  
+ if(trigger_waypoints){
+   ROS_INFO("trigger waypoints");
+   ROS_INFO("global_direction = %f",global_direction);
+   ROS_INFO("global_direction_max_distance = %f",global_direction_max_distance);
+      if(global_direction != prev_global_direction){       
+        ROS_INFO("prev is not same");
+             if( global_direction >= -PI/4.0 && global_direction <= PI/4.0){
+           // goal direction = go to +x direction         
+                 end_pt_(0) = odom_pos_(0)+global_direction_max_distance*3;
+                end_pt_(1) = odom_pos_(1);     
+            }else if(global_direction >= -PI/4.0+PI/2.0 && global_direction <= PI/4.0+PI/2.0){
+              // goal direction = go to +y direction 
+                 end_pt_(0) = odom_pos_(0);
+                 end_pt_(1) = odom_pos_(1)+global_direction_max_distance*3;
+            }else if(global_direction >= PI-PI/4.0 && global_direction <= -PI+PI/4.0){
+              // goal direction = go to -x direction 
+                 end_pt_(0) = odom_pos_(0)-global_direction_max_distance*3;
+                 end_pt_(1) = odom_pos_(1);
+            }else if(global_direction >= -PI/4.0-PI/2.0 && global_direction <= PI/4.0-PI/2.0){
+              // goal direction = go to -y direction 
+                 end_pt_(0) = odom_pos_(0);
+                 end_pt_(1) = odom_pos_(1)-global_direction_max_distance*3;     
+            }
+            end_pt_(2) = 1.5;  
+            // end_vel_.setZero();
+            // have_target_ = true;
+            //     if (exec_state_ == WAIT_TARGET)
+            //       changeFSMExecState(GEN_NEW_TRAJ, "TRIG");
+            //     else if (exec_state_ == EXEC_TRAJ)
+            //       changeFSMExecState(REPLAN_TRAJ, "TRIG");     
+            
+      }
+      visualization_->drawGoal(end_pt_, 0.3, Eigen::Vector4d(1, 0, 0, 1.0));
+           
+  }
+  prev_global_direction = global_direction;
+
+    //////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////
   LocalTrajData* info = &planner_manager_->local_data_;
 
   if (have_target_) {
@@ -297,7 +374,7 @@ void KinoReplanFSM::checkCollisionCallback(const ros::TimerEvent& e) {
       }
 
       if (max_dist > 0.3) {
-        cout << "change goal, replan." << endl;
+        // cout << "change goal, replan." << endl;
         end_pt_      = goal;
         have_target_ = true;
         end_vel_.setZero();
@@ -311,7 +388,7 @@ void KinoReplanFSM::checkCollisionCallback(const ros::TimerEvent& e) {
         // have_target_ = false;
         // cout << "Goal near collision, stop." << endl;
         // changeFSMExecState(WAIT_TARGET, "SAFETY");
-        cout << "goal near collision, keep retry" << endl;
+        // cout << "goal near collision, keep retry" << endl;
         changeFSMExecState(REPLAN_TRAJ, "FSM");
 
         std_msgs::Empty emt;
@@ -319,6 +396,7 @@ void KinoReplanFSM::checkCollisionCallback(const ros::TimerEvent& e) {
       }
     }
   }
+
 
   /* ---------- check trajectory ---------- */
   if (exec_state_ == FSM_EXEC_STATE::EXEC_TRAJ) {

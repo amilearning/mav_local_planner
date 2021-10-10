@@ -132,48 +132,26 @@ void SDFMap::initMap(ros::NodeHandle& nh,ros::NodeHandle& map_nh) {
   md_.proj_points_.resize(640 * 480 / mp_.skip_pixel_ / mp_.skip_pixel_);
   md_.proj_points_cnt = 0;
 
-  /* init callback */
-
-  depth_sub_.reset(new message_filters::Subscriber<sensor_msgs::Image>(node_, "/sdf_map/depth", 50));
-
-  if (mp_.pose_type_ == POSE_STAMPED) {
-    pose_sub_.reset(
-        new message_filters::Subscriber<geometry_msgs::PoseStamped>(node_, "/sdf_map/pose", 25));
-
-    sync_image_pose_.reset(new message_filters::Synchronizer<SyncPolicyImagePose>(
-        SyncPolicyImagePose(100), *depth_sub_, *pose_sub_));
-    sync_image_pose_->registerCallback(boost::bind(&SDFMap::depthPoseCallback, this, _1, _2));
-  }
-  // } else if (mp_.pose_type_ == ODOMETRY) {
-    // odom_sub_.reset(new message_filters::Subscriber<nav_msgs::Odometry>(node_, "/sdf_map/odom", 100));
-
-    // sync_image_odom_.reset(new message_filters::Synchronizer<SyncPolicyImageOdom>(
-    //     SyncPolicyImageOdom(100), *depth_sub_, *odom_sub_));
-    // sync_image_odom_->registerCallback(boost::bind(&SDFMap::depthOdomCallback, this, _1, _2));
+ 
 
 
-  // }
-
-
-    odom_sub_.reset(new message_filters::Subscriber<nav_msgs::Odometry>(map_node_, "/sdf_map/odom", 100));
+    odom_sub_.reset(new message_filters::Subscriber<nav_msgs::Odometry>(map_node_, "/mavros/local_position/odom", 100));
     lidar_sub_.reset(new message_filters::Subscriber<sensor_msgs::LaserScan>(map_node_, "/laser/scan", 100));
     point_cloud_sub_.reset(new message_filters::Subscriber<sensor_msgs::PointCloud2>(map_node_, "/camera/depth/color/points", 100));
 
+    oned_lidar_cloud_sub_.reset(new message_filters::Subscriber<sensor_msgs::Range>(map_node_, "/mavros/distance_sensor/lidarlite_pub", 100));
+
+    
+
     sync_pose_laser_points_.reset(new message_filters::Synchronizer<SyncPolicyPoseLaserPoints>(
-        SyncPolicyPoseLaserPoints(100), *odom_sub_, *lidar_sub_, *point_cloud_sub_));
-    sync_pose_laser_points_->registerCallback(boost::bind(&SDFMap::odomLaserCloudCallback, this, _1, _2, _3));
+        SyncPolicyPoseLaserPoints(100), *odom_sub_, *lidar_sub_, *point_cloud_sub_, *oned_lidar_cloud_sub_));
+    sync_pose_laser_points_->registerCallback(boost::bind(&SDFMap::odomLaserCloudCallback, this, _1, _2, _3, _4));
 
 
 
-  // use odometry and point cloud
-  // lidar_sub = node_.subscribe<sensor_msgs::LaserScan>("/laser/scan", 10, &SDFMap::lidarCallback, this);
-  // indep_cloud_sub_ =
-  //     node_.subscribe<sensor_msgs::PointCloud2>("/sdf_map/cloud", 10, &SDFMap::cloudCallback, this);
-  // indep_odom_sub_ =
-  //     node_.subscribe<nav_msgs::Odometry>("/sdf_map/odom", 10, &SDFMap::odomCallback, this);
 
   
-  occ_timer_ = node_.createTimer(ros::Duration(0.05), &SDFMap::updateOccupancyCallback, this);
+  
   esdf_timer_ = node_.createTimer(ros::Duration(0.05), &SDFMap::updateESDFCallback, this);
   vis_timer_ = node_.createTimer(ros::Duration(0.05), &SDFMap::visCallback, this);
 
@@ -205,80 +183,31 @@ void SDFMap::initMap(ros::NodeHandle& nh,ros::NodeHandle& map_nh) {
   eng_ = default_random_engine(rd());
 }
 
-void SDFMap::lidarCallback(const sensor_msgs::LaserScanConstPtr &scan_in){
-  // if(!lidar_sub_done){     
-  //   laser_in_back_left.angle_min = -3.141958;
-  //   laser_in_back_left.angle_max = scan_in->angle_min;
-  //   laser_in_back_left.angle_increment = scan_in->angle_increment;
-  //   laser_in_back_left.time_increment = scan_in->time_increment;
-  //   laser_in_back_left.scan_time = scan_in->scan_time;
-  //   laser_in_back_left.range_min = scan_in->range_min;
-  //   laser_in_back_left.range_max = scan_in->range_max;
-  //   for (int i = 0; i < (laser_in_back_left.angle_max - laser_in_back_left.angle_min)/laser_in_back_left.angle_increment+1; i++){
-  //     laser_in_back_left.ranges.push_back(2.0);
-  //     laser_in_back_left.intensities.push_back(1000.0);
-  //   }    
-  //   laser_in_back_right.angle_min = scan_in->angle_max;
-  //   laser_in_back_right.angle_max = 3.141958;
-  //   laser_in_back_right.angle_increment = scan_in->angle_increment;
-  //   laser_in_back_right.time_increment = scan_in->time_increment;
-  //   laser_in_back_right.scan_time = scan_in->scan_time;
-  //   laser_in_back_right.range_min = scan_in->range_min;
-  //   laser_in_back_right.range_max = scan_in->range_max;
-  //     for (int i = 0; i < (laser_in_back_right.angle_max - laser_in_back_right.angle_min)/laser_in_back_right.angle_increment+1; i++){
-  //       laser_in_back_right.ranges.push_back(2.0);
-  //       laser_in_back_right.intensities.push_back(1000.0);
-  //     }
-  // }
-  // laser_in_back_left.header = scan_in->header;
-  // laser_in_back_right.header = scan_in->header;
-
-  // lidar_data =*scan_in;
-  // lidar_frame_ = scan_in->header.frame_id;
-  // lidar_sub_done =true;
-
-  // try { 
-  //       projector_.projectLaser (laser_in_back_left,pcd_from_lidar_left_back);
-  //        projector_.projectLaser (laser_in_back_right,pcd_from_lidar_right_back);
-
-  //       tf_listener_.waitForTransform(scan_in->header.frame_id,
-  //                                     "/base_link",
-  //                                     scan_in->header.stamp+ ros::Duration().fromSec(scan_in->ranges.size()*scan_in->time_increment),
-  //                                     ros::Duration(0.5));
-        
-  //       projector_.transformLaserScanToPointCloud("/base_link",*scan_in,pcd_from_lidar,tf_listener_);
-  //   } catch (tf::TransformException& ex) {
-  //     ROS_ERROR_STREAM(
-  //         "Error getting TF transform from sensor data: " << ex.what());
-  //         lidar_sub_done =false;
-  //     return;
-  //   }
-
- 
-  
-  
-
-}
 
 void SDFMap::resetBuffer() {
 
-   bool trigger_=false;
-  if(map_reset_switch){     
-      if(map_reset_done){
-        trigger_=false;        
-      }else{          
-          trigger_ = true;
-          map_reset_done = true;
-      }    
-  }
-  else{
-    trigger_=true;
-    map_reset_done = false;
-  }
+  
+//  if(trigger_ && map_update_off_switch){
+//      map_update_done = true;
+//   }
 
-  if(!trigger_){
-    return;
-  }
+  //  bool trigger_=false;
+  // if(map_reset_switch){     
+  //     if(map_reset_done){
+  //       trigger_=false;        
+  //     }else{          
+  //         trigger_ = true;
+  //         // map_reset_done = true;
+  //     }    
+  // }
+  // else{
+  //   trigger_=true;
+  //   map_reset_done = false;
+  // }
+
+  // if(!trigger_){
+  //   return;
+  // }
 
 
     Eigen::Vector3d min_pos = mp_.map_min_boundary_;
@@ -287,16 +216,97 @@ void SDFMap::resetBuffer() {
     md_.local_bound_min_ = Eigen::Vector3i::Zero();
     md_.local_bound_max_ = mp_.map_voxel_num_ - Eigen::Vector3i::Ones();
     
-  
+  //   if(map_reset_switch && trigger_){
+  //   map_reset_done = true;
+  // }
 }
 
 
 void SDFMap::resetBuffer(Eigen::Vector3d min_pos, Eigen::Vector3d max_pos) {
   
+
+
+  
+  const int vec_margin = 5;
+  // Eigen::Vector3i min_vec_margin = min_vec - Eigen::Vector3i(vec_margin,
+  // vec_margin, vec_margin); Eigen::Vector3i max_vec_margin = max_vec +
+  // Eigen::Vector3i(vec_margin, vec_margin, vec_margin);
+
+  Eigen::Vector3i min_cut = md_.local_bound_min_ -
+      Eigen::Vector3i(mp_.local_map_margin_, mp_.local_map_margin_, mp_.local_map_margin_);
+  Eigen::Vector3i max_cut = md_.local_bound_max_ +
+      Eigen::Vector3i(mp_.local_map_margin_, mp_.local_map_margin_, mp_.local_map_margin_);
+  boundIndex(min_cut);
+  boundIndex(max_cut);
+
+  Eigen::Vector3i min_cut_m = min_cut - Eigen::Vector3i(vec_margin, vec_margin, vec_margin);
+  Eigen::Vector3i max_cut_m = max_cut + Eigen::Vector3i(vec_margin, vec_margin, vec_margin);
+  boundIndex(min_cut_m);
+  boundIndex(max_cut_m);
+
+ 
+
+  // clear data outside the local range
+  
+  for (int x = min_cut_m(0); x <= max_cut_m(0); ++x)
+    for (int y = min_cut_m(1); y <= max_cut_m(1); ++y) {
+   
+      for (int z = min_cut_m(2); z < min_cut(2); ++z) {
+        int idx = toAddress(x, y, z);
+        md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
+        md_.distance_buffer_all_[idx] = 10000;
+      }
+
+      for (int z = max_cut(2) + 1; z <= max_cut_m(2); ++z) {
+        int idx = toAddress(x, y, z);
+        md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
+        md_.distance_buffer_all_[idx] = 10000;
+      }
+    }
+
+  for (int z = min_cut_m(2); z <= max_cut_m(2); ++z)
+    for (int x = min_cut_m(0); x <= max_cut_m(0); ++x) {
+
+      for (int y = min_cut_m(1); y < min_cut(1); ++y) {
+        int idx = toAddress(x, y, z);
+        md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
+        md_.distance_buffer_all_[idx] = 10000;
+      }
+
+      for (int y = max_cut(1) + 1; y <= max_cut_m(1); ++y) {
+        int idx = toAddress(x, y, z);
+        md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
+        md_.distance_buffer_all_[idx] = 10000;
+      }
+    }
+
+  for (int y = min_cut_m(1); y <= max_cut_m(1); ++y)
+    for (int z = min_cut_m(2); z <= max_cut_m(2); ++z) {
+
+      for (int x = min_cut_m(0); x < min_cut(0); ++x) {
+        int idx = toAddress(x, y, z);
+        md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
+        md_.distance_buffer_all_[idx] = 10000;
+      }
+
+      for (int x = max_cut(0) + 1; x <= max_cut_m(0); ++x) {
+        int idx = toAddress(x, y, z);
+        md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
+        md_.distance_buffer_all_[idx] = 10000;
+      }
+    }
+
+ 
   // if(!map_resetting){
   //   return;
   // }
   Eigen::Vector3i min_id, max_id;
+  min_pos(0) = min_pos(0)-1;
+  min_pos(1) = min_pos(1)-1;
+
+  max_pos(0) = max_pos(0)+1;
+  max_pos(1) = max_pos(1)+1;
+  
   posToIndex(min_pos, min_id);
   posToIndex(max_pos, max_id);
 
@@ -469,157 +479,6 @@ int SDFMap::setCacheOccupancy(Eigen::Vector3d pos, int occ) {
 }
 
 
-void SDFMap::raycastProcess() {
-  // if (md_.proj_points_.size() == 0) return;
-  if (md_.proj_points_cnt == 0) return;
-  // if (!md_.has_odom_) return;
-  // ROS_INFO("dd");
-  ros::Time t1, t2;
-
-  md_.raycast_num_ += 1;
-
-  int vox_idx;
-  double length;
-
-  // bounding box of updated region
-  double min_x = mp_.map_max_boundary_(0);
-  double min_y = mp_.map_max_boundary_(1);
-  double min_z = mp_.map_max_boundary_(2);
-
-  double max_x = mp_.map_min_boundary_(0);
-  double max_y = mp_.map_min_boundary_(1);
-  double max_z = mp_.map_min_boundary_(2);
-
-  RayCaster raycaster;
-  Eigen::Vector3d half = Eigen::Vector3d(0.5, 0.5, 0.5);
-  Eigen::Vector3d ray_pt, pt_w;
-
-  for (int i = 0; i < md_.proj_points_cnt; ++i) {
-    pt_w = md_.proj_points_[i];
-
-    // set flag for projected point
-
-    if (!isInMap(pt_w)) {
-      pt_w = closetPointInMap(pt_w, md_.camera_pos_);
-
-      length = (pt_w - md_.camera_pos_).norm();
-      if (length > mp_.max_ray_length_) {
-        pt_w = (pt_w - md_.camera_pos_) / length * mp_.max_ray_length_ + md_.camera_pos_;
-      }
-      vox_idx = setCacheOccupancy(pt_w, 0);
-
-    } else {
-      length = (pt_w - md_.camera_pos_).norm();
-
-      if (length > mp_.max_ray_length_) {
-        pt_w = (pt_w - md_.camera_pos_) / length * mp_.max_ray_length_ + md_.camera_pos_;
-        vox_idx = setCacheOccupancy(pt_w, 0);
-      } else {
-        vox_idx = setCacheOccupancy(pt_w, 1);
-      }
-    }
-
-    max_x = max(max_x, pt_w(0));
-    max_y = max(max_y, pt_w(1));
-    max_z = max(max_z, pt_w(2));
-
-    min_x = min(min_x, pt_w(0));
-    min_y = min(min_y, pt_w(1));
-    min_z = min(min_z, pt_w(2));
-
-    // raycasting between camera center and point  
-    if (vox_idx != INVALID_IDX) {
-      if (md_.flag_rayend_[vox_idx] == md_.raycast_num_) {        
-        continue;
-      } else {
-        md_.flag_rayend_[vox_idx] = md_.raycast_num_;
-      }
-    }
-
-    raycaster.setInput(pt_w / mp_.resolution_, md_.camera_pos_ / mp_.resolution_);
-
-    while (raycaster.step(ray_pt)) {
-      Eigen::Vector3d tmp = (ray_pt + half) * mp_.resolution_;
-      length = (tmp - md_.camera_pos_).norm();
-
-      if (length < mp_.min_ray_length_) break;
-
-      vox_idx = setCacheOccupancy(tmp, 0);
-
-      if (vox_idx != INVALID_IDX) {
-        if (md_.flag_traverse_[vox_idx] == md_.raycast_num_) {          
-          break;
-        } else {
-          md_.flag_traverse_[vox_idx] = md_.raycast_num_;
-        }
-      }
-    }
-  }
-  // determine the local bounding box for updating ESDF
-  min_x = min(min_x, md_.camera_pos_(0));
-  min_y = min(min_y, md_.camera_pos_(1));
-  min_z = min(min_z, md_.camera_pos_(2));
-
-  max_x = max(max_x, md_.camera_pos_(0));
-  max_y = max(max_y, md_.camera_pos_(1));
-  max_z = max(max_z, md_.camera_pos_(2));
-  max_z = max(max_z, mp_.ground_height_);
-
-  posToIndex(Eigen::Vector3d(max_x, max_y, max_z), md_.local_bound_max_);
-  posToIndex(Eigen::Vector3d(min_x, min_y, min_z), md_.local_bound_min_);
-
-  int esdf_inf = ceil(mp_.local_bound_inflate_ / mp_.resolution_);
-  md_.local_bound_max_ += esdf_inf * Eigen::Vector3i(1, 1, 0);
-  md_.local_bound_min_ -= esdf_inf * Eigen::Vector3i(1, 1, 0);
-  boundIndex(md_.local_bound_min_);
-  boundIndex(md_.local_bound_max_);
-
-  md_.local_updated_ = true;
-
-  // update occupancy cached in queue
-  Eigen::Vector3d local_range_min = md_.camera_pos_ - mp_.local_update_range_;
-  Eigen::Vector3d local_range_max = md_.camera_pos_ + mp_.local_update_range_;
-
-  Eigen::Vector3i min_id, max_id;
-  posToIndex(local_range_min, min_id);
-  posToIndex(local_range_max, max_id);
-  boundIndex(min_id);
-  boundIndex(max_id);
-
-  // std::cout << "cache all: " << md_.cache_voxel_.size() << std::endl;
-
-  while (!md_.cache_voxel_.empty()) {
-
-    Eigen::Vector3i idx = md_.cache_voxel_.front();
-    int idx_ctns = toAddress(idx);
-    md_.cache_voxel_.pop();
-
-    double log_odds_update =
-        md_.count_hit_[idx_ctns] >= md_.count_hit_and_miss_[idx_ctns] - md_.count_hit_[idx_ctns] ?
-        mp_.prob_hit_log_ :
-        mp_.prob_miss_log_;
-
-    md_.count_hit_[idx_ctns] = md_.count_hit_and_miss_[idx_ctns] = 0;
-
-    if (log_odds_update >= 0 && md_.occupancy_buffer_[idx_ctns] >= mp_.clamp_max_log_) {
-      continue;
-    } else if (log_odds_update <= 0 && md_.occupancy_buffer_[idx_ctns] <= mp_.clamp_min_log_) {
-      md_.occupancy_buffer_[idx_ctns] = mp_.clamp_min_log_;
-      continue;
-    }
-
-    bool in_local = idx(0) >= min_id(0) && idx(0) <= max_id(0) && idx(1) >= min_id(1) &&
-        idx(1) <= max_id(1) && idx(2) >= min_id(2) && idx(2) <= max_id(2);
-    if (!in_local) {
-      md_.occupancy_buffer_[idx_ctns] = mp_.clamp_min_log_;
-    }
-
-    md_.occupancy_buffer_[idx_ctns] =
-        std::min(std::max(md_.occupancy_buffer_[idx_ctns] + log_odds_update, mp_.clamp_min_log_),
-                 mp_.clamp_max_log_);
-  }
-}
-
 Eigen::Vector3d SDFMap::closetPointInMap(const Eigen::Vector3d& pt, const Eigen::Vector3d& camera_pt) {
   Eigen::Vector3d diff = pt - camera_pt;
   Eigen::Vector3d max_tc = mp_.map_max_boundary_ - camera_pt;
@@ -641,136 +500,6 @@ Eigen::Vector3d SDFMap::closetPointInMap(const Eigen::Vector3d& pt, const Eigen:
   return camera_pt + (min_t - 1e-3) * diff;
 }
 
-void SDFMap::clearAndInflateLocalMap() {
-  /*clear outside local*/
-  ROS_INFO("@@@@@@@@@@@@@@@@@@@@@@@@@@@");
-  
-  const int vec_margin = 5;
-  // Eigen::Vector3i min_vec_margin = min_vec - Eigen::Vector3i(vec_margin,
-  // vec_margin, vec_margin); Eigen::Vector3i max_vec_margin = max_vec +
-  // Eigen::Vector3i(vec_margin, vec_margin, vec_margin);
-
-  Eigen::Vector3i min_cut = md_.local_bound_min_ -
-      Eigen::Vector3i(mp_.local_map_margin_, mp_.local_map_margin_, mp_.local_map_margin_);
-  Eigen::Vector3i max_cut = md_.local_bound_max_ +
-      Eigen::Vector3i(mp_.local_map_margin_, mp_.local_map_margin_, mp_.local_map_margin_);
-  boundIndex(min_cut);
-  boundIndex(max_cut);
-
-  Eigen::Vector3i min_cut_m = min_cut - Eigen::Vector3i(vec_margin, vec_margin, vec_margin);
-  Eigen::Vector3i max_cut_m = max_cut + Eigen::Vector3i(vec_margin, vec_margin, vec_margin);
-  boundIndex(min_cut_m);
-  boundIndex(max_cut_m);
-
- 
-
-  // clear data outside the local range
-  
-  for (int x = min_cut_m(0); x <= max_cut_m(0); ++x)
-    for (int y = min_cut_m(1); y <= max_cut_m(1); ++y) {
-   
-      for (int z = min_cut_m(2); z < min_cut(2); ++z) {
-        int idx = toAddress(x, y, z);
-        md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
-        md_.distance_buffer_all_[idx] = 10000;
-      }
-
-      for (int z = max_cut(2) + 1; z <= max_cut_m(2); ++z) {
-        int idx = toAddress(x, y, z);
-        md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
-        md_.distance_buffer_all_[idx] = 10000;
-      }
-    }
-
-  for (int z = min_cut_m(2); z <= max_cut_m(2); ++z)
-    for (int x = min_cut_m(0); x <= max_cut_m(0); ++x) {
-
-      for (int y = min_cut_m(1); y < min_cut(1); ++y) {
-        int idx = toAddress(x, y, z);
-        md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
-        md_.distance_buffer_all_[idx] = 10000;
-      }
-
-      for (int y = max_cut(1) + 1; y <= max_cut_m(1); ++y) {
-        int idx = toAddress(x, y, z);
-        md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
-        md_.distance_buffer_all_[idx] = 10000;
-      }
-    }
-
-  for (int y = min_cut_m(1); y <= max_cut_m(1); ++y)
-    for (int z = min_cut_m(2); z <= max_cut_m(2); ++z) {
-
-      for (int x = min_cut_m(0); x < min_cut(0); ++x) {
-        int idx = toAddress(x, y, z);
-        md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
-        md_.distance_buffer_all_[idx] = 10000;
-      }
-
-      for (int x = max_cut(0) + 1; x <= max_cut_m(0); ++x) {
-        int idx = toAddress(x, y, z);
-        md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
-        md_.distance_buffer_all_[idx] = 10000;
-      }
-    }
-
-  // inflate occupied voxels to compensate robot size
-
-  int inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
-  int inf_step_z = 1;
-  vector<Eigen::Vector3i> inf_pts(pow(2 * inf_step + 1, 3));
-  // inf_pts.resize(4 * inf_step + 3);
-  Eigen::Vector3i inf_pt;
-  
-  // clear outdated data
-  for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
-    for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y)
-      for (int z = md_.local_bound_min_(2); z <= md_.local_bound_max_(2); ++z) {
-        md_.occupancy_buffer_inflate_[toAddress(x, y, z)] = 0;
-      }
-
-  // inflate obstacles
-  for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
-    for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y)
-      for (int z = md_.local_bound_min_(2); z <= md_.local_bound_max_(2); ++z) {
-        // for (int z = -inf_step_z; z <= +inf_step_z; ++z) {
-
-        if (md_.occupancy_buffer_[toAddress(x, y, z)] > mp_.min_occupancy_log_) {
-          inflatePoint(Eigen::Vector3i(x, y, z), inf_step, inf_pts);
-
-          for (int k = 0; k < (int)inf_pts.size(); ++k) {
-            inf_pt = inf_pts[k];
-            int idx_inf = toAddress(inf_pt);
-            if (idx_inf < 0 ||
-                idx_inf >= mp_.map_voxel_num_(0) * mp_.map_voxel_num_(1) * mp_.map_voxel_num_(2)) {
-              continue;
-            }
-            md_.occupancy_buffer_inflate_[idx_inf] = 1;
-          }
-        }
-      }
-  
-  // add virtual ceiling to limit flight height
-  if (mp_.virtual_ceil_height_ > -0.5) {
-    int ceil_id = floor((mp_.virtual_ceil_height_ - mp_.map_origin_(2)) * mp_.resolution_inv_);
-    for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
-      for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y) {
-        md_.occupancy_buffer_inflate_[toAddress(x, y, ceil_id)] = 1;
-        // ROS_INFO("ceiling limit x = %f, y = %f, z = %f",x,y,ceil_id);
-      }
-  }
- // add ground to limit flight height
- 
-      int ceil_id = floor((mp_.map_origin_(2)-mp_.map_origin_(2)+0.1) * mp_.resolution_inv_);
-    for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
-      for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y) {
-        //  for (int kk =0 ; kk < 2; ++kk){
-        //   int tmp = ceil_id + kk;
-            md_.occupancy_buffer_inflate_[toAddress(x, y, ceil_id)] = 1;     
-        // }   
-      }
-  
-}
 
 void SDFMap::visCallback(const ros::TimerEvent& /*event*/) {
   publishMap();
@@ -782,45 +511,11 @@ void SDFMap::visCallback(const ros::TimerEvent& /*event*/) {
   // publishDepth();
 }
 
-void SDFMap::updateOccupancyCallback(const ros::TimerEvent& /*event*/) {
-  if (!md_.occ_need_update_) return;
-
-  /* update occupancy */
-  ros::Time t1, t2;
-  t1 = ros::Time::now();
-
-  // projectDepthImage();
-  raycastProcess();
-  
-  if (md_.local_updated_) {
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    ROS_INFO("local update ");
-    clearAndInflateLocalMap();
-  }
-
-  t2 = ros::Time::now();
-
-  md_.fuse_time_ += (t2 - t1).toSec();
-  md_.max_fuse_time_ = max(md_.max_fuse_time_, (t2 - t1).toSec());
-
-  if (mp_.show_occ_time_)
-    ROS_WARN("Fusion: cur t = %lf, avg t = %lf, max t = %lf", (t2 - t1).toSec(),
-             md_.fuse_time_ / md_.update_num_, md_.max_fuse_time_);
-
-  md_.occ_need_update_ = false;
-  if (md_.local_updated_) md_.esdf_need_update_ = true;
-  md_.local_updated_ = false;
-}
 
 void SDFMap::updateESDFCallback(const ros::TimerEvent& /*event*/) {
-  if (!md_.esdf_need_update_) return;
+  if (!md_.esdf_need_update_) {    
+    return;
+  }
   
   /* esdf */
   ros::Time t1, t2;
@@ -837,63 +532,14 @@ void SDFMap::updateESDFCallback(const ros::TimerEvent& /*event*/) {
     ROS_WARN("ESDF: cur t = %lf, avg t = %lf, max t = %lf", (t2 - t1).toSec(),
              md_.esdf_time_ / md_.update_num_, md_.max_esdf_time_);
 
+  
+ 
   md_.esdf_need_update_ = false;
   
 }
 
-void SDFMap::depthPoseCallback(const sensor_msgs::ImageConstPtr& img,
-                               const geometry_msgs::PoseStampedConstPtr& pose) {
-  /* get depth image */
-  cv_bridge::CvImagePtr cv_ptr;
-  cv_ptr = cv_bridge::toCvCopy(img, img->encoding);
 
-  if (img->encoding == sensor_msgs::image_encodings::TYPE_32FC1) {
-    (cv_ptr->image).convertTo(cv_ptr->image, CV_16UC1, mp_.k_depth_scaling_factor_);
-  }
-  cv_ptr->image.copyTo(md_.depth_image_);
 
-  // std::cout << "depth: " << md_.depth_image_.cols << ", " << md_.depth_image_.rows << std::endl;
-
-  /* get pose */
-  md_.camera_pos_(0) = pose->pose.position.x;
-  md_.camera_pos_(1) = pose->pose.position.y;
-  md_.camera_pos_(2) = pose->pose.position.z;
-  md_.camera_q_ = Eigen::Quaterniond(pose->pose.orientation.w, pose->pose.orientation.x,
-                                     pose->pose.orientation.y, pose->pose.orientation.z);
-  if (isInMap(md_.camera_pos_)) {
-    md_.has_odom_ = true;
-    md_.update_num_ += 1;
-    md_.occ_need_update_ = true;
-  } else {
-    md_.occ_need_update_ = false;
-  }
-}
-// void SDFMap::set_map_reset(bool msg){
-//    map_resetting = msg;
-//    if(map_resetting){
-//      cur_map_fill = false;
-//    }
-// }
-// bool SDFMap::get_map_fill(){
-//   return cur_map_fill;
-// }
-
-void SDFMap::odomCallback(const nav_msgs::OdometryConstPtr& odom) {
-  // if (md_.has_first_depth_) return;
-  // odom_msg = *odom;
-  // md_.camera_pos_(0) = odom->pose.pose.position.x;
-  // md_.camera_pos_(1) = odom->pose.pose.position.y;
-  // md_.camera_pos_(2) = odom->pose.pose.position.z;
-  // // md_.camera_q_ = Eigen::Quaterniond(odom->pose.pose.orientation.w, odom->pose.pose.orientation.x,
-  // //                                     odom->pose.pose.orientation.y, odom->pose.pose.orientation.z);
-  // if (isInMap(md_.camera_pos_)) {
-  //   md_.has_odom_ = true;
-  //   md_.update_num_ += 1;
-  //   md_.occ_need_update_ = true;
-  // } else {
-  //   md_.occ_need_update_ = false;
-  // }
-}
 
 Eigen::Affine3d SDFMap::transformTFToAffine3d(const tf::Transform &t) {
     Eigen::Affine3d e;
@@ -911,349 +557,9 @@ Eigen::Affine3d SDFMap::transformTFToAffine3d(const tf::Transform &t) {
     return e;
 }
 
-void SDFMap::cloudCallback(const sensor_msgs::PointCloud2ConstPtr& img) {  
-  
-//   pcl::PointCloud<pcl::PointXYZ> latest_cloud;
-//   pcl::PointCloud<pcl::PointXYZ>::Ptr latest_cloud_tmp (new pcl::PointCloud<pcl::PointXYZ>);
-//   pcl::fromROSMsg(*img, *latest_cloud_tmp);
 
-  
 
-//   // pcl::fromROSMsg(*img, latest_cloud);
-//   md_.has_cloud_ = true;
-//   if (!md_.has_odom_) {
-//     // std::cout << "no odom!" << std::endl;
-//     return;
-//   }
-//   //////////////////////////////////////////////////////////////////////////////////////
-//   // transform point cloud from ** depth camera ** to world frame
-//   //////////////////////////////////////////////////////////////////////////////////////
-//   tf::StampedTransform robot_to_world;
-//   try {
-  
-//     tf_listener_.waitForTransform(world_frame_, robot_frame_,odom_msg.header.stamp,ros::Duration(0.1));
-//     tf_listener_.lookupTransform(world_frame_, robot_frame_, odom_msg.header.stamp,robot_to_world);
-//   } catch (tf::TransformException& ex) {
-//     ROS_ERROR_STREAM(
-//         "Error getting TF transform from sensor data: " << ex.what());
-//     return;
-//   }  
-//   tf::Transform transform_tmp(robot_to_world.getBasis(), robot_to_world.getOrigin());
-//   Eigen::Affine3d affine_transform_tmp = transformTFToAffine3d(transform_tmp);
-//   pcl::transformPointCloud(*latest_cloud_tmp, *latest_cloud_tmp, affine_transform_tmp);
-//   latest_cloud = *latest_cloud_tmp;
-
-
-//   if (latest_cloud.points.size() == 0) return;
-
-//   if (isnan(md_.camera_pos_(0)) || isnan(md_.camera_pos_(1)) || isnan(md_.camera_pos_(2))) return;
-
-//   this->resetBuffer(md_.camera_pos_ - mp_.local_update_range_,
-//                     md_.camera_pos_ + mp_.local_update_range_);
-
-//   pcl::PointXYZ pt;
-//   Eigen::Vector3d p3d, p3d_inf;
-
-//   int inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
-//   int inf_step_z = 1;
-
-//   double max_x, max_y, max_z, min_x, min_y, min_z;
-
-//   min_x = mp_.map_max_boundary_(0);
-//   min_y = mp_.map_max_boundary_(1);
-//   min_z = mp_.map_max_boundary_(2);
-
-//   max_x = mp_.map_min_boundary_(0);
-//   max_y = mp_.map_min_boundary_(1);
-//   max_z = mp_.map_min_boundary_(2);
-//   //////////////////////////////////////////////////////////////////////////////////////
-//   // tranfrom point cloud from ** Lidar ** to world frame 
-//   //////////////////////////////////////////////////////////////////////////////////////  
-//   if(lidar_sub_done){
-//     pcl::PointCloud<pcl::PointXYZ> latest_lidar_cloud;
-//     pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_cloud_tmp (new pcl::PointCloud<pcl::PointXYZ>);
-//     pcl::fromROSMsg(pcd_from_lidar, *lidar_cloud_tmp);
-
-//     pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_cloud_tmp_left_back (new pcl::PointCloud<pcl::PointXYZ>);
-//     pcl::fromROSMsg(pcd_from_lidar_left_back, *lidar_cloud_tmp_left_back);
-  
-//     pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_cloud_tmp_right_back (new pcl::PointCloud<pcl::PointXYZ>);
-//     pcl::fromROSMsg(pcd_from_lidar_right_back, *lidar_cloud_tmp_right_back);
-
-//     *lidar_cloud_tmp += (*lidar_cloud_tmp_left_back);
-//     *lidar_cloud_tmp += (*lidar_cloud_tmp_right_back);
-
-
-
-// pcl::PointCloud<pcl::PointXYZ>::Ptr p_obstacles(new pcl::PointCloud<pcl::PointXYZ>);
-//   pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
-//   pcl::ExtractIndices<pcl::PointXYZ> extract;
-//   for (int i = 0; i < (*lidar_cloud_tmp).size(); i++)
-//   {
-//     pcl::PointXYZ pt(lidar_cloud_tmp->points[i].x, lidar_cloud_tmp->points[i].y, lidar_cloud_tmp->points[i].z);    
-//     double point_yaw = atan2( pt.y ,pt.x);             
-//     if (abs(point_yaw) < 0.5f) // e.g. remove all pts if it goes beyond FOV of camera 
-//     { 
-//       inliers->indices.push_back(i);
-//     }
-//   }
-//   extract.setInputCloud(lidar_cloud_tmp);
-//   extract.setIndices(inliers);
-//   extract.setNegative(true);
-//   extract.filter(*lidar_cloud_tmp);
-
-//     tf::StampedTransform lidar_to_world;
-//     try {
-      
-//       tf_listener_.waitForTransform(world_frame_, lidar_frame_,odom_msg.header.stamp,ros::Duration(0.1));
-//       tf_listener_.lookupTransform(world_frame_, lidar_frame_, odom_msg.header.stamp,lidar_to_world);
-//     } catch (tf::TransformException& ex) {
-//       ROS_ERROR_STREAM(
-//           "Error getting TF transform from sensor data: " << ex.what());
-//       return;
-//     }  
-//     tf::Transform transform_lidar_tmp(lidar_to_world.getBasis(), lidar_to_world.getOrigin());
-//     Eigen::Affine3d affine_transform_lidar_tmp = transformTFToAffine3d(transform_lidar_tmp);
-//     pcl::transformPointCloud(*lidar_cloud_tmp, *lidar_cloud_tmp, affine_transform_lidar_tmp);
-//     latest_lidar_cloud = *lidar_cloud_tmp;
-
-
-//     inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
-//     for (size_t i = 0; i < latest_lidar_cloud.points.size(); ++i) {
-//       pt = latest_lidar_cloud.points[i]; 
-//       for (double kk=-2.0; kk<2 ; kk=kk+0.2){      
-//           p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z+kk;            
-//           /* point inside update range */
-//           Eigen::Vector3d devi = p3d - md_.camera_pos_;
-//           // Eigen::Vector3d devi = p3d ;
-//           Eigen::Vector3i inf_pt;
-
-//           if (fabs(devi(0)) < mp_.local_update_range_(0) && fabs(devi(1)) < mp_.local_update_range_(1) &&
-//               fabs(devi(2)) < mp_.local_update_range_(2)) {
-          
-//             /* inflate the point */
-//             for (int x = -inf_step; x <= inf_step; ++x)
-//               for (int y = -inf_step; y <= inf_step; ++y)
-//                 for (int z = -inf_step_z; z <= inf_step_z; ++z) {
-
-//                   p3d_inf(0) = pt.x + x * mp_.resolution_;
-//                   p3d_inf(1) = pt.y + y * mp_.resolution_;
-//                   p3d_inf(2) = pt.z +kk+ z * mp_.resolution_;
-
-//                   max_x = max(max_x, p3d_inf(0));
-//                   max_y = max(max_y, p3d_inf(1));
-//                   max_z = max(max_z, p3d_inf(2));
-
-//                   min_x = min(min_x, p3d_inf(0));
-//                   min_y = min(min_y, p3d_inf(1));
-//                   min_z = min(min_z, p3d_inf(2));
-
-//                   posToIndex(p3d_inf, inf_pt);
-
-//                   if (!isInMap(inf_pt)) continue;
-
-//                   int idx_inf = toAddress(inf_pt);
-
-//                   md_.occupancy_buffer_inflate_[idx_inf] = 1;
-//                 }
-//             }
-//         }
-//     } 
-//   }
-// inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);  
-
-
-  
-// //////////////////////////////////////////////////////////////////////////////////////
-// // latest_cloud += latest_lidar_cloud; 
-// //////////////////////////////////////////////////////////////////////////////////////
-
-  
-// //  for (size_t i = 0; i < latest_lidar_cloud.points.size(); ++i) {
-// //     pt = latest_lidar_cloud.points[i];    
-// //     for (int z_i = -1 ; z_i< 1;z_i = z_i+0.2){
-// //          p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z+z_i;
-        
-// //     /* point inside update range */
-// //     Eigen::Vector3d devi = p3d - md_.camera_pos_;
-// //     // Eigen::Vector3d devi = p3d ;
-// //     Eigen::Vector3i inf_pt;
-
-// //     if (fabs(devi(0)) < mp_.local_update_range_(0) && fabs(devi(1)) < mp_.local_update_range_(1) &&
-// //         fabs(devi(2)) < mp_.local_update_range_(2)) {
-
-// //       /* inflate the point */
-// //       for (int x = -inf_step; x <= inf_step; ++x)
-// //         for (int y = -inf_step; y <= inf_step; ++y)
-// //           for (int z = -inf_step_z; z <= inf_step_z; ++z) {
-
-// //             p3d_inf(0) = pt.x + x * mp_.resolution_;
-// //             p3d_inf(1) = pt.y + y * mp_.resolution_;
-// //             p3d_inf(2) = pt.z + z * mp_.resolution_;
-
-// //             max_x = max(max_x, p3d_inf(0));
-// //             max_y = max(max_y, p3d_inf(1));
-// //             max_z = max(max_z, p3d_inf(2));
-
-// //             min_x = min(min_x, p3d_inf(0));
-// //             min_y = min(min_y, p3d_inf(1));
-// //             min_z = min(min_z, p3d_inf(2));
-
-// //             posToIndex(p3d_inf, inf_pt);
-
-// //             if (!isInMap(inf_pt)) continue;
-
-// //             int idx_inf = toAddress(inf_pt);
-
-// //             md_.occupancy_buffer_inflate_[idx_inf] = 1;
-// //           }
-// //         }
-// //     }
-   
-// //   }
-//  if (mp_.virtual_ceil_height_ > -0.5) {
-//     int ceil_id = floor((mp_.virtual_ceil_height_ - mp_.map_origin_(2)) * mp_.resolution_inv_);
-//     for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
-//       for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y) {
-//         md_.occupancy_buffer_inflate_[toAddress(x, y, ceil_id)] = 1;        
-//       }
-//   }
-//  // add ground to limit flight height
-//       int ceil_id = floor(( mp_.map_origin_(2) - mp_.map_origin_(2)) * mp_.resolution_inv_);
-//     for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
-//       for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y) {
-//         //  for (int kk =0 ; kk < 2; ++kk){
-//         //   int tmp = ceil_id + kk;
-//             md_.occupancy_buffer_inflate_[toAddress(x, y, ceil_id)] = 1;     
-//         // }   
-//       }
-
-  
-
-
-//   for (size_t i = 0; i < latest_cloud.points.size(); ++i) {
-//     pt = latest_cloud.points[i];    
-    
-//     if( sqrt( pow(pt.x,2) + pow(pt.y,2) + pow(pt.z,2)) < mp_.min_ray_length_){
-//         continue;
-//       }
-      
-//     p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z;
-
-    
-//     /* point inside update range */
-//     Eigen::Vector3d devi = p3d - md_.camera_pos_;
-//     // Eigen::Vector3d devi = p3d ;
-//     Eigen::Vector3i inf_pt;
-
-//     if (fabs(devi(0)) < mp_.local_update_range_(0) && fabs(devi(1)) < mp_.local_update_range_(1) &&
-//         fabs(devi(2)) < mp_.local_update_range_(2)) {
-
-//       /* inflate the point */
-//       for (int x = -inf_step; x <= inf_step; ++x)
-//         for (int y = -inf_step; y <= inf_step; ++y)
-//           for (int z = -inf_step_z; z <= inf_step_z; ++z) {
-
-//             p3d_inf(0) = pt.x + x * mp_.resolution_;
-//             p3d_inf(1) = pt.y + y * mp_.resolution_;
-//             p3d_inf(2) = pt.z + z * mp_.resolution_;
-
-//             max_x = max(max_x, p3d_inf(0));
-//             max_y = max(max_y, p3d_inf(1));
-//             max_z = max(max_z, p3d_inf(2));
-
-//             min_x = min(min_x, p3d_inf(0));
-//             min_y = min(min_y, p3d_inf(1));
-//             min_z = min(min_z, p3d_inf(2));
-
-//             posToIndex(p3d_inf, inf_pt);
-
-//             if (!isInMap(inf_pt)) continue;
-
-//             int idx_inf = toAddress(inf_pt);
-
-//             md_.occupancy_buffer_inflate_[idx_inf] = 1;
-//           }
-//     }
-//   }
-
-// // if (mp_.virtual_ceil_height_ > -0.5) {
-// //     int ceil_id = floor((mp_.virtual_ceil_height_ - mp_.map_origin_(2)) * mp_.resolution_inv_);
-// //     for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
-// //       for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y) {
-// //         for (int kk =0 ; kk < 2; ++kk){
-// //           int tmp = ceil_id + kk;
-// //           md_.occupancy_buffer_inflate_[toAddress(x, y, tmp)] = 1;        
-// //         }         
-// //       }
-// //   }
-// // // fill up the ground 
-// //     int ceil_id = floor((0 - mp_.map_origin_(2)) * mp_.resolution_inv_);
-// //     for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
-// //       for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y) {
-// //          for (int kk =0 ; kk < 2; ++kk){
-// //           int tmp = ceil_id + kk;
-// //             md_.occupancy_buffer_inflate_[toAddress(x, y, tmp)] = 1;     
-// //         }   
-// //       }
-
-//   min_x = min(min_x, md_.camera_pos_(0));
-//   min_y = min(min_y, md_.camera_pos_(1));
-//   min_z = min(min_z, md_.camera_pos_(2));
-
-//   max_x = max(max_x, md_.camera_pos_(0));
-//   max_y = max(max_y, md_.camera_pos_(1));
-//   max_z = max(max_z, md_.camera_pos_(2));
-
-//   max_z = max(max_z, mp_.ground_height_);
-
-//   posToIndex(Eigen::Vector3d(max_x, max_y, max_z), md_.local_bound_max_);
-//   posToIndex(Eigen::Vector3d(min_x, min_y, min_z), md_.local_bound_min_);
-
-//   boundIndex(md_.local_bound_min_);
-//   boundIndex(md_.local_bound_max_);
-
-//   md_.esdf_need_update_ = true;
-}
-
-void SDFMap::publishMap() {
-  // pcl::PointXYZ pt;
-  // pcl::PointCloud<pcl::PointXYZ> cloud;
-
-  // Eigen::Vector3i min_cut = md_.local_bound_min_ -
-  //     Eigen::Vector3i(mp_.local_map_margin_, mp_.local_map_margin_, mp_.local_map_margin_);
-  // Eigen::Vector3i max_cut = md_.local_bound_max_ +
-  //     Eigen::Vector3i(mp_.local_map_margin_, mp_.local_map_margin_, mp_.local_map_margin_);
-
-  // boundIndex(min_cut);
-  // boundIndex(max_cut);
-
-  // for (int x = min_cut(0); x <= max_cut(0); ++x)
-  //   for (int y = min_cut(1); y <= max_cut(1); ++y)
-  //     for (int z = min_cut(2); z <= max_cut(2); ++z) {
-
-  //       if (md_.occupancy_buffer_[toAddress(x, y, z)] <= mp_.min_occupancy_log_) continue;
-
-  //       Eigen::Vector3d pos;
-  //       indexToPos(Eigen::Vector3i(x, y, z), pos);
-  //       if (pos(2) > mp_.visualization_truncate_height_) continue;
-
-  //       pt.x = pos(0);
-  //       pt.y = pos(1);
-  //       pt.z = pos(2);
-  //       cloud.points.push_back(pt);
-  //     }
-
-  // cloud.width = cloud.points.size();
-  // cloud.height = 1;
-  // cloud.is_dense = true;
-  // cloud.header.frame_id = mp_.frame_id_;
-
-  // sensor_msgs::PointCloud2 cloud_msg;
-  // pcl::toROSMsg(cloud, cloud_msg);
-  // map_pub_.publish(cloud_msg);
-
-  // ROS_INFO("pub map");
+void SDFMap::publishMap() { 
 
   pcl::PointXYZ pt;
   pcl::PointCloud<pcl::PointXYZ> cloud;
@@ -1336,66 +642,9 @@ void SDFMap::publishMapInflate(bool all_info) {
   // ROS_INFO("pub map");
 }
 
-void SDFMap::publishUnknown() {
-  pcl::PointXYZ pt;
-  pcl::PointCloud<pcl::PointXYZ> cloud;
 
-  Eigen::Vector3i min_cut = md_.local_bound_min_;
-  Eigen::Vector3i max_cut = md_.local_bound_max_;
 
-  boundIndex(max_cut);
-  boundIndex(min_cut);
 
-  for (int x = min_cut(0); x <= max_cut(0); ++x)
-    for (int y = min_cut(1); y <= max_cut(1); ++y)
-      for (int z = min_cut(2); z <= max_cut(2); ++z) {
-
-        if (md_.occupancy_buffer_[toAddress(x, y, z)] < mp_.clamp_min_log_ - 1e-3) {
-          Eigen::Vector3d pos;
-          indexToPos(Eigen::Vector3i(x, y, z), pos);
-          if (pos(2) > mp_.visualization_truncate_height_) continue;
-
-          pt.x = pos(0);
-          pt.y = pos(1);
-          pt.z = pos(2);
-          cloud.push_back(pt);
-        }
-      }
-
-  cloud.width = cloud.points.size();
-  cloud.height = 1;
-  cloud.is_dense = true;
-  cloud.header.frame_id = mp_.frame_id_;
-
-  // auto sz = max_cut - min_cut;
-  // std::cout << "unknown ratio: " << cloud.width << "/" << sz(0) * sz(1) * sz(2) << "="
-  //           << double(cloud.width) / (sz(0) * sz(1) * sz(2)) << std::endl;
-
-  sensor_msgs::PointCloud2 cloud_msg;
-  pcl::toROSMsg(cloud, cloud_msg);
-  unknown_pub_.publish(cloud_msg);
-}
-
-void SDFMap::publishDepth() {
-  pcl::PointXYZ pt;
-  pcl::PointCloud<pcl::PointXYZ> cloud;
-
-  for (int i = 0; i < md_.proj_points_cnt; ++i) {
-    pt.x = md_.proj_points_[i][0];
-    pt.y = md_.proj_points_[i][1];
-    pt.z = md_.proj_points_[i][2];
-    cloud.push_back(pt);
-  }
-
-  cloud.width = cloud.points.size();
-  cloud.height = 1;
-  cloud.is_dense = true;
-  cloud.header.frame_id = mp_.frame_id_;
-
-  sensor_msgs::PointCloud2 cloud_msg;
-  pcl::toROSMsg(cloud, cloud_msg);
-  depth_pub_.publish(cloud_msg);
-}
 
 void SDFMap::publishUpdateRange() {
   Eigen::Vector3d esdf_min_pos, esdf_max_pos, cube_pos, cube_scale;
@@ -1548,81 +797,148 @@ void SDFMap::getSurroundPts(const Eigen::Vector3d& pos, Eigen::Vector3d pts[2][2
   }
 }
 
+// void SDFMap::getGlobalfix_map_updatefix_map_update
+
 void SDFMap::odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom,   
                                     const sensor_msgs::LaserScanConstPtr &scan_in, 
-                                    const sensor_msgs::PointCloud2ConstPtr& img) {
-  if (md_.has_first_depth_) return;
+                                    const sensor_msgs::PointCloud2ConstPtr& img,
+                                    const sensor_msgs::RangeConstPtr& oneDLidar) {
+  
+  if(map_update_done && map_update_off_switch){  
+    return ;
+  }
+  md_.has_first_depth_ = true;
+  md_.has_odom_ = true;
+  md_.has_cloud_ = true;
+ 
+ 
+  if (isnan(md_.camera_pos_(0)) || isnan(md_.camera_pos_(1)) || isnan(md_.camera_pos_(2))) return;
+
+  
   odom_msg = *odom;
   md_.camera_pos_(0) = odom->pose.pose.position.x;
   md_.camera_pos_(1) = odom->pose.pose.position.y;
   md_.camera_pos_(2) = odom->pose.pose.position.z;
-  // md_.camera_q_ = Eigen::Quaterniond(odom->pose.pose.orientation.w, odom->pose.pose.orientation.x,
-  //                                     odom->pose.pose.orientation.y, odom->pose.pose.orientation.z);
-
-    tf::Quaternion q_(odom->pose.pose.orientation.w, odom->pose.pose.orientation.x,odom->pose.pose.orientation.y, odom->pose.pose.orientation.z);
+  
+  //////////////
+  Eigen::Vector3d oneDLidar_global;
+  oneDLidar_global(0) = md_.camera_pos_(0);
+  oneDLidar_global(1) = md_.camera_pos_(1);  
+  if(oneDLidar->range < oneDLidar->max_range || oneDLidar->range > oneDLidar->min_range)
+    {      
+      oneDLidar_global(2) = md_.camera_pos_(2) - oneDLidar->range;
+    }else{
+       oneDLidar_global(2) = 0.0;
+    }
+ 
+    tf::Quaternion q_(odom->pose.pose.orientation.x, odom->pose.pose.orientation.y,odom->pose.pose.orientation.z, odom->pose.pose.orientation.w);
     tf::Matrix3x3 m(q_);            
     double roll, pitch, yaw;
-    m.getRPY(roll, pitch, yaw);        
+    m.getRPY(roll, pitch, yaw);    
     current_yaw = yaw;
-
-    // if(!map_resetting && cur_map_fill){
-    // return;
-    // } 
     
-  if (isInMap(md_.camera_pos_)) {
-    md_.has_odom_ = true;
-    md_.update_num_ += 1;
-    md_.occ_need_update_ = true;
-  } else {
-    md_.occ_need_update_ = false;
+//////////////////////////////////////////////////////////////
+    
+  // bool trigger_=false;
+  // if(map_update_off_switch){     
+  //     if(map_update_done && map_reset_done){
+  //       trigger_=false;        
+  //     }else{          
+  //         trigger_ = true;
+  //         // map_update_done = true;
+  //     }    
+  // }
+  // else{
+  //   trigger_=true;
+  //   map_update_done = false;
+  // }
+ 
+  // if(!trigger_ ){
+  //   ROS_INFO("trigger out");
+  //   return;
+  // }
+  if(!map_update_off_switch){  
+  this->resetBuffer(md_.camera_pos_ - mp_.local_update_range_,
+                    md_.camera_pos_ + mp_.local_update_range_);
+                    ROS_INFO("map has been initialized");
   }
 
-//////////////////////////////////////////////////////////////
-  
-  bool trigger_=false;
-  if(map_update_off_switch){     
-      if(map_update_done || map_reset_done){
-        trigger_=false;        
-      }else{          
-          trigger_ = true;
-          map_update_done = true;
-      }    
-  }
-  else{
-    trigger_=true;
-    map_update_done = false;
-  }
- 
-  if(!trigger_ ){
-    return;
-  }
-  //////////////////////////////////////////////
-  /////////////////////////////////////////////
+  int inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
+  int inf_step_z = 1;
+
+   ///////////////////////////////////////////////
+  // if pose if close to origin, fill up the barrier in the back 
+//  for (size_t i = -2; i <2 ; ++i) {      
+//     p3d(0) = i, p3d(1) = -0.5, p3d(2) = 0.0;    
+//     /* point inside update range */
+//     Eigen::Vector3d devi = p3d - md_.camera_pos_;    
+//     Eigen::Vector3i inf_pt;
+//     if (fabs(devi(0)) < mp_.local_update_range_(0) && fabs(devi(1)) < mp_.local_update_range_(1) &&
+//         fabs(devi(2)) < mp_.local_update_range_(2)) {
+//       /* inflate the point */
+//       for (int x = -inf_step; x <= inf_step; ++x)
+//         for (int y = -inf_step; y <= inf_step; ++y)
+//           for (int z = -inf_step_z; z <= inf_step_z; ++z) {
+
+//             p3d_inf(0) = pt.x + x * mp_.resolution_;
+//             p3d_inf(1) = pt.y + y * mp_.resolution_;
+//             p3d_inf(2) = pt.z + z * mp_.resolution_;          
+//             posToIndex(p3d_inf, inf_pt);
+//             int idx_inf = toAddress(inf_pt);
+//             md_.occupancy_buffer_inflate_[idx_inf] = 1;
+//           }
+//     }
+//   }
+
+  ///////////////////////////////////////////////
   ////////////////////////////////////////////
-  
+  // Fill out the bottom of drone based on 1D lidar measure 
+
+    Eigen::Vector3d oned_inf;
+    Eigen::Vector3i oned_pt;   
+            for (int x = -inf_step; x <= inf_step; ++x)
+              for (int y = -inf_step; y <= inf_step; ++y)
+                for (int z = -1; z <= 0; ++z) {
+
+                  oned_inf(0) = oneDLidar_global(0) + x * mp_.resolution_;
+                  oned_inf(1) = oneDLidar_global(1) + y * mp_.resolution_;
+                  oned_inf(2) = oneDLidar_global(2) + z * mp_.resolution_;
+
+                  
+
+                  posToIndex(oned_inf, oned_pt);
+                  if (!isInMap(oned_pt)) continue;
+                                      
+                  int idx_inf = toAddress(oned_pt);
+
+                  md_.occupancy_buffer_inflate_[idx_inf] = 1;
+                }
+  /////////////////////////////////////////
+  //////////////////////////////////////
+
    if(!lidar_sub_done){     
-    laser_in_back_left.angle_min = -3.141958;
-    laser_in_back_left.angle_max = scan_in->angle_min;
-    laser_in_back_left.angle_increment = scan_in->angle_increment;
-    laser_in_back_left.time_increment = scan_in->time_increment;
-    laser_in_back_left.scan_time = scan_in->scan_time;
-    laser_in_back_left.range_min = scan_in->range_min;
-    laser_in_back_left.range_max = scan_in->range_max;
-    for (int i = 0; i < (laser_in_back_left.angle_max - laser_in_back_left.angle_min)/laser_in_back_left.angle_increment+1; i++){
-      laser_in_back_left.ranges.push_back(2.0);
-      laser_in_back_left.intensities.push_back(1000.0);
-    }    
-    laser_in_back_right.angle_min = scan_in->angle_max;
-    laser_in_back_right.angle_max = 3.141958;
-    laser_in_back_right.angle_increment = scan_in->angle_increment;
-    laser_in_back_right.time_increment = scan_in->time_increment;
-    laser_in_back_right.scan_time = scan_in->scan_time;
-    laser_in_back_right.range_min = scan_in->range_min;
-    laser_in_back_right.range_max = scan_in->range_max;
-      for (int i = 0; i < (laser_in_back_right.angle_max - laser_in_back_right.angle_min)/laser_in_back_right.angle_increment+1; i++){
-        laser_in_back_right.ranges.push_back(2.0);
-        laser_in_back_right.intensities.push_back(1000.0);
-      }
+        laser_in_back_left.angle_min = -3.141958;
+        laser_in_back_left.angle_max = scan_in->angle_min;
+        laser_in_back_left.angle_increment = scan_in->angle_increment;
+        laser_in_back_left.time_increment = scan_in->time_increment;
+        laser_in_back_left.scan_time = scan_in->scan_time;
+        laser_in_back_left.range_min = scan_in->range_min;
+        laser_in_back_left.range_max = scan_in->range_max;
+        for (int i = 0; i < (laser_in_back_left.angle_max - laser_in_back_left.angle_min)/laser_in_back_left.angle_increment+1; i++){
+          laser_in_back_left.ranges.push_back(2.0);
+          laser_in_back_left.intensities.push_back(1000.0);
+        }    
+        laser_in_back_right.angle_min = scan_in->angle_max;
+        laser_in_back_right.angle_max = 3.141958;
+        laser_in_back_right.angle_increment = scan_in->angle_increment;
+        laser_in_back_right.time_increment = scan_in->time_increment;
+        laser_in_back_right.scan_time = scan_in->scan_time;
+        laser_in_back_right.range_min = scan_in->range_min;
+        laser_in_back_right.range_max = scan_in->range_max;
+          for (int i = 0; i < (laser_in_back_right.angle_max - laser_in_back_right.angle_min)/laser_in_back_right.angle_increment+1; i++){
+            laser_in_back_right.ranges.push_back(2.0);
+            laser_in_back_right.intensities.push_back(1000.0);
+          }
   }
   laser_in_back_left.header = scan_in->header;
   laser_in_back_right.header = scan_in->header;
@@ -1631,35 +947,7 @@ void SDFMap::odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom,
   lidar_frame_ = scan_in->header.frame_id;
   lidar_sub_done =true;
 
-  try { 
-        // tf_listener_.waitForTransform(scan_in->header.frame_id,
-        //                               "/base_link",
-        //                               scan_in->header.stamp+ ros::Duration().fromSec(scan_in->ranges.size()*scan_in->time_increment),
-        //                               ros::Duration(0.5));       
-        
-        projector_.projectLaser (laser_in_back_left,pcd_from_lidar_left_back);
-        // projector_.transformLaserScanToPointCloud("/base_link",laser_in_back_left,pcd_from_lidar_left_back,tf_listener_);
-
-        // tf_listener_.waitForTransform(scan_in->header.frame_id,
-        //                               "/base_link",
-        //                               scan_in->header.stamp+ ros::Duration().fromSec(scan_in->ranges.size()*scan_in->time_increment),
-        //                               ros::Duration(0.5));
-            
-        // projector_.transformLaserScanToPointCloud("/base_link",laser_in_back_right,pcd_from_lidar_right_back,tf_listener_);
-        projector_.projectLaser (laser_in_back_right,pcd_from_lidar_right_back);
-
-        tf_listener_.waitForTransform(scan_in->header.frame_id,
-                                      "/base_link",
-                                      scan_in->header.stamp+ ros::Duration().fromSec(scan_in->ranges.size()*scan_in->time_increment),
-                                      ros::Duration(0.5));
-        
-        projector_.transformLaserScanToPointCloud("/base_link",*scan_in,pcd_from_lidar,tf_listener_);
-    } catch (tf::TransformException& ex) {
-      ROS_ERROR_STREAM(
-          "Error getting TF transform from sensor data: " << ex.what());
-          lidar_sub_done =false;
-      return;
-    }
+  
  
  ///////////////////////////////////////////
  //////////////////////////////////////////
@@ -1669,13 +957,13 @@ void SDFMap::odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom,
   pcl::PointCloud<pcl::PointXYZ>::Ptr latest_cloud_tmp (new pcl::PointCloud<pcl::PointXYZ>);
   pcl::fromROSMsg(*img, *latest_cloud_tmp);
 
-  
-  // pcl::fromROSMsg(*img, latest_cloud);
-  md_.has_cloud_ = true;
-  if (!md_.has_odom_) {
-    // std::cout << "no odom!" << std::endl;
-    return;
-  }
+  ////////////  Downsample pcl///////////////////
+        pcl::VoxelGrid<pcl::PointXYZ> sor;
+        sor.setInputCloud (latest_cloud_tmp);             
+        sor.setLeafSize (0.2f, 0.2f, 0.2f); //leaf size
+        sor.filter (*latest_cloud_tmp);        
+//////////////////////////////////////////
+
   //////////////////////////////////////////////////////////////////////////////////////
   // transform point cloud from ** depth camera ** to world frame
   //////////////////////////////////////////////////////////////////////////////////////
@@ -1694,18 +982,12 @@ void SDFMap::odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom,
   latest_cloud = *latest_cloud_tmp;
 
 
-  if (latest_cloud.points.size() == 0) return;
-
-  if (isnan(md_.camera_pos_(0)) || isnan(md_.camera_pos_(1)) || isnan(md_.camera_pos_(2))) return;
-
-  this->resetBuffer(md_.camera_pos_ - mp_.local_update_range_,
-                    md_.camera_pos_ + mp_.local_update_range_);
 
   pcl::PointXYZ pt;
   Eigen::Vector3d p3d, p3d_inf;
 
-  int inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
-  int inf_step_z = 1;
+  // int inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
+  // int inf_step_z = 2;
 
   double max_x, max_y, max_z, min_x, min_y, min_z;
 
@@ -1716,152 +998,10 @@ void SDFMap::odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom,
   max_x = mp_.map_min_boundary_(0);
   max_y = mp_.map_min_boundary_(1);
   max_z = mp_.map_min_boundary_(2);
-  //////////////////////////////////////////////////////////////////////////////////////
-  // tranfrom point cloud from ** Lidar ** to world frame 
-  //////////////////////////////////////////////////////////////////////////////////////  
-  if(lidar_sub_done){
-    pcl::PointCloud<pcl::PointXYZ> latest_lidar_cloud;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_cloud_tmp (new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::fromROSMsg(pcd_from_lidar, *lidar_cloud_tmp);
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_cloud_tmp_left_back (new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::fromROSMsg(pcd_from_lidar_left_back, *lidar_cloud_tmp_left_back);
-  
-    pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_cloud_tmp_right_back (new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::fromROSMsg(pcd_from_lidar_right_back, *lidar_cloud_tmp_right_back);
 
-    *lidar_cloud_tmp += (*lidar_cloud_tmp_left_back);
-    *lidar_cloud_tmp += (*lidar_cloud_tmp_right_back);
 
-  pcl::PointCloud<pcl::PointXYZ>::Ptr p_obstacles(new pcl::PointCloud<pcl::PointXYZ>);
-
-//////////////////////////////// FILTER points inside of field of view ///////////////////
-  // pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
-  // pcl::ExtractIndices<pcl::PointXYZ> extract;
-  // for (int i = 0; i < (*lidar_cloud_tmp).size(); i++)
-  // {
-  //   pcl::PointXYZ pt(lidar_cloud_tmp->points[i].x, lidar_cloud_tmp->points[i].y, lidar_cloud_tmp->points[i].z);    
-  //   double point_yaw = atan2( pt.y ,pt.x);             
-  //   if (abs(point_yaw) < 0.6f) // e.g. remove all pts if it goes beyond FOV of camera 
-  //   { 
-  //     inliers->indices.push_back(i);
-  //   }
-  // }
-  // extract.setInputCloud(lidar_cloud_tmp);
-  // extract.setIndices(inliers);
-  // extract.setNegative(true);
-  // extract.filter(*lidar_cloud_tmp);
-
-    tf::StampedTransform lidar_to_world;
-    try {
-      tf_listener_.waitForTransform(world_frame_, lidar_frame_,odom_msg.header.stamp,ros::Duration(0.3));
-      tf_listener_.lookupTransform(world_frame_, lidar_frame_, odom_msg.header.stamp,lidar_to_world);
-    } catch (tf::TransformException& ex) {
-      ROS_ERROR_STREAM(
-          "Error getting TF transform from sensor data: " << ex.what());
-      return;
-    }  
-    tf::Transform transform_lidar_tmp(lidar_to_world.getBasis(), lidar_to_world.getOrigin());
-    Eigen::Affine3d affine_transform_lidar_tmp = transformTFToAffine3d(transform_lidar_tmp);
-    pcl::transformPointCloud(*lidar_cloud_tmp, *lidar_cloud_tmp, affine_transform_lidar_tmp);
-    latest_lidar_cloud = *lidar_cloud_tmp;
-
-    inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
-    for (size_t i = 0; i < latest_lidar_cloud.points.size(); ++i) {
-      pt = latest_lidar_cloud.points[i]; 
-////////////////////////////////////////////
-      //// check if the points inside of camera field of view 
-////////////////////////////////////////////
-      double angle_from_point = (pt.y - md_.camera_pos_(1)) / ( pt.x- md_.camera_pos_(0));
-      truncateYaw(angle_from_point);
-    if (fabs(angle_from_point) < 0.785f){
-////////////////////////////////////////////
-         p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z;            
-          /* point inside update range */
-          Eigen::Vector3d devi = p3d - md_.camera_pos_;
-          if (fabs(devi(0)) < 0.6 && fabs(devi(1)) < 0.6 ) continue;
-          // Eigen::Vector3d devi = p3d ;
-          Eigen::Vector3i inf_pt;              
-        
-
-          if (fabs(devi(0)) < mp_.local_update_range_(0)-mp_.obstacles_inflation_-mp_.resolution_ && fabs(devi(1)) < mp_.local_update_range_(1)-mp_.obstacles_inflation_ -mp_.resolution_&&
-              fabs(devi(2)) < mp_.local_update_range_(2)) {          
-            /* inflate the point */
-            for (int x = -inf_step; x <= inf_step; ++x)
-              for (int y = -inf_step; y <= inf_step; ++y)
-                for (int z = -inf_step_z; z <= inf_step_z; ++z) {
-
-                  p3d_inf(0) = pt.x + x * mp_.resolution_;
-                  p3d_inf(1) = pt.y + y * mp_.resolution_;
-                  p3d_inf(2) = pt.z + z * mp_.resolution_;
-
-                  max_x = max(max_x, p3d_inf(0));
-                  max_y = max(max_y, p3d_inf(1));
-                  max_z = max(max_z, p3d_inf(2));
-
-                  min_x = min(min_x, p3d_inf(0));
-                  min_y = min(min_y, p3d_inf(1));
-                  min_z = min(min_z, p3d_inf(2));
-
-                  posToIndex(p3d_inf, inf_pt);
-
-                  if (!isInMap(inf_pt)) continue;
-                  //skip points inside of robot dimension 
-                  Eigen::Vector3d devi_local = p3d_inf-md_.camera_pos_;     
-                  if (fabs(devi_local(0)) < 0.6 && fabs(devi_local(1)) < 0.6 ) continue;
-
-                  int idx_inf = toAddress(inf_pt);
-
-                  md_.occupancy_buffer_inflate_[idx_inf] = 1;
-                }
-            }
-
-      } else{
-      //// /// laser data over the field of view (create virtual wall)
-            for (double kk=-(pt.z); kk<(3-pt.z) ; kk=kk+mp_.obstacles_inflation_){      
-                p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z+kk;            
-                /* point inside update range */
-                Eigen::Vector3d devi = p3d - md_.camera_pos_;
-                if (fabs(devi(0)) < 0.6 && fabs(devi(1)) < 0.6 ) continue;
-                // Eigen::Vector3d devi = p3d ;
-                Eigen::Vector3i inf_pt;
-                if (fabs(devi(0)) < mp_.local_update_range_(0)-mp_.obstacles_inflation_-mp_.resolution_ && fabs(devi(1)) < mp_.local_update_range_(1)-mp_.obstacles_inflation_ -mp_.resolution_&&
-                    fabs(devi(2)) < mp_.local_update_range_(2)) {
-                
-                  /* inflate the point */
-                  for (int x = -inf_step; x <= inf_step; ++x)
-                    for (int y = -inf_step; y <= inf_step; ++y)
-                      for (int z = -inf_step; z <= inf_step; ++z) {
-
-                        p3d_inf(0) = pt.x + x * mp_.resolution_;
-                        p3d_inf(1) = pt.y + y * mp_.resolution_;
-                        p3d_inf(2) = pt.z +kk+ z * mp_.resolution_;
-
-                        max_x = max(max_x, p3d_inf(0));
-                        max_y = max(max_y, p3d_inf(1));
-                        max_z = max(max_z, p3d_inf(2));
-
-                        min_x = min(min_x, p3d_inf(0));
-                        min_y = min(min_y, p3d_inf(1));
-                        min_z = min(min_z, p3d_inf(2));
-
-                        posToIndex(p3d_inf, inf_pt);
-
-                        if (!isInMap(inf_pt)) continue;
-                         //skip points inside of robot dimension 
-                        Eigen::Vector3d devi_local =  p3d_inf-md_.camera_pos_;     
-                        if (fabs(devi_local(0)) < 0.6 && fabs(devi_local(1)) < 0.6 ) continue;
-
-                        int idx_inf = toAddress(inf_pt);
-
-                        md_.occupancy_buffer_inflate_[idx_inf] = 1;
-                      }
-                  }
-              }
-          }
-    } 
-  }
-inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);  
+  if (latest_cloud.points.size() == 0) return;
 
   
  if (mp_.virtual_ceil_height_ > -0.5) {
@@ -1880,8 +1020,6 @@ inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
             md_.occupancy_buffer_inflate_[toAddress(x, y, ceil_id)] = 1;     
         // }   
       }
-
-  
 
 
   for (size_t i = 0; i < latest_cloud.points.size(); ++i) {
@@ -1934,6 +1072,262 @@ inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
     }
   }
 
+  
+  double min_x_devi = 0.0;
+  double max_x_devi = 0.0;
+  double min_y_devi = 0.0;
+  double max_y_devi = 0.0;
+  //////////////////////////////////////////////////////////////////////////////////////
+  // tranfrom point cloud from ** Lidar ** to world frame 
+  //////////////////////////////////////////////////////////////////////////////////////  
+  try {    
+        projector_.projectLaser (laser_in_back_left,pcd_from_lidar_left_back);        
+        projector_.projectLaser (laser_in_back_right,pcd_from_lidar_right_back);
+        tf_listener_.waitForTransform(scan_in->header.frame_id,
+                                      "/base_link",
+                                      scan_in->header.stamp+ ros::Duration().fromSec(scan_in->ranges.size()*scan_in->time_increment),
+                                      ros::Duration(0.5));
+        
+        projector_.transformLaserScanToPointCloud("/base_link",*scan_in,pcd_from_lidar,tf_listener_);
+     
+      if(lidar_sub_done){
+        pcl::PointCloud<pcl::PointXYZ> latest_lidar_cloud;
+        pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_cloud_tmp (new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::fromROSMsg(pcd_from_lidar, *lidar_cloud_tmp);
+
+        pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_cloud_tmp_left_back (new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::fromROSMsg(pcd_from_lidar_left_back, *lidar_cloud_tmp_left_back);
+      
+        pcl::PointCloud<pcl::PointXYZ>::Ptr lidar_cloud_tmp_right_back (new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::fromROSMsg(pcd_from_lidar_right_back, *lidar_cloud_tmp_right_back);
+
+        *lidar_cloud_tmp += (*lidar_cloud_tmp_left_back);
+        *lidar_cloud_tmp += (*lidar_cloud_tmp_right_back);
+
+      pcl::PointCloud<pcl::PointXYZ>::Ptr p_obstacles(new pcl::PointCloud<pcl::PointXYZ>);
+
+    //////////////////////////////// FILTER points inside of field of view ///////////////////
+      
+
+        tf::StampedTransform lidar_to_world;
+        try {
+          tf_listener_.waitForTransform(world_frame_, lidar_frame_,odom_msg.header.stamp,ros::Duration(0.3));
+          tf_listener_.lookupTransform(world_frame_, lidar_frame_, odom_msg.header.stamp,lidar_to_world);
+        } catch (tf::TransformException& ex) {
+          ROS_ERROR_STREAM(
+              "Error getting TF transform from sensor data: " << ex.what());
+          return;
+        }  
+        tf::Transform transform_lidar_tmp(lidar_to_world.getBasis(), lidar_to_world.getOrigin());
+        Eigen::Affine3d affine_transform_lidar_tmp = transformTFToAffine3d(transform_lidar_tmp);
+        pcl::transformPointCloud(*lidar_cloud_tmp, *lidar_cloud_tmp, affine_transform_lidar_tmp);
+        latest_lidar_cloud = *lidar_cloud_tmp;
+
+        inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
+
+        
+        
+        for (size_t i = 0; i < latest_lidar_cloud.points.size(); ++i) {
+          pt = latest_lidar_cloud.points[i]; 
+          
+    ////////////////////////////////////////////
+          //// check if the points inside of camera field of view 
+    ////////////////////////////////////////////
+          double angle_from_point = atan2((pt.y - md_.camera_pos_(1)),( pt.x- md_.camera_pos_(0)));        
+          double tmp_ = current_yaw-angle_from_point;
+          truncateYaw(tmp_);      
+          double tmp_diff_angle = fabs(tmp_);       
+
+          p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z;                    
+          Eigen::Vector3d devi = p3d - md_.camera_pos_; 
+          
+            ///////////////////////////////////////
+    //////////////////// update global direction  based on lidar measurements 
+          // global_direction;      
+          double global_direction_angle_tmp_ = global_direction-angle_from_point;
+          truncateYaw(global_direction_angle_tmp_);      
+          double global_direction_tmp_diff_angle = fabs(global_direction_angle_tmp_);       
+          if( global_direction_tmp_diff_angle < PI/2){
+              if( min_x_devi > devi(0)){
+                min_x_devi = devi(0);
+              }
+              if(max_x_devi < devi(0)){
+                max_x_devi = devi(0);
+              }
+              if( min_y_devi > devi(1)){
+                min_y_devi = devi(1);
+              }
+              if(max_y_devi < devi(1)){
+                max_y_devi = devi(1);
+              }
+          }
+          //////////////////////////////////////////   
+          //////////////////////////////////////////   
+        
+          
+          Eigen::Vector3i inf_pt;          
+          /////////////////////////
+        if (tmp_diff_angle < 0.3419f){     
+              if (fabs(devi(0)) < 0.6 && fabs(devi(1)) < 0.6 ) continue;
+              // Eigen::Vector3d devi = p3d ;
+              // if (fabs(devi(0)) < mp_.local_update_range_(0)-mp_.obstacles_inflation_-mp_.resolution_ && fabs(devi(1)) < mp_.local_update_range_(1)-mp_.obstacles_inflation_ -mp_.resolution_&&
+              if (fabs(devi(0)) < mp_.local_update_range_(0) && fabs(devi(1)) < mp_.local_update_range_(1) &&
+                  fabs(devi(2)) < mp_.local_update_range_(2)) {          
+                /* inflate the point */
+                for (int x = -inf_step; x <= inf_step; ++x)
+                  for (int y = -inf_step; y <= inf_step; ++y)
+                    for (int z = -inf_step_z; z <= inf_step_z; ++z) {
+
+                      p3d_inf(0) = pt.x + x * mp_.resolution_;
+                      p3d_inf(1) = pt.y + y * mp_.resolution_;
+                      p3d_inf(2) = pt.z + z * mp_.resolution_;
+
+                      max_x = max(max_x, p3d_inf(0));
+                      max_y = max(max_y, p3d_inf(1));
+                      max_z = max(max_z, p3d_inf(2));
+
+                      min_x = min(min_x, p3d_inf(0));
+                      min_y = min(min_y, p3d_inf(1));
+                      min_z = min(min_z, p3d_inf(2));
+
+                      posToIndex(p3d_inf, inf_pt);
+
+                      if (!isInMap(inf_pt)) continue;
+                      //skip points inside of robot dimension 
+                      Eigen::Vector3d devi_local = p3d_inf-md_.camera_pos_;     
+                      if (fabs(devi_local(0)) < 0.6 && fabs(devi_local(1)) < 0.6 ) continue;
+
+                      int idx_inf = toAddress(inf_pt);
+                      md_.occupancy_buffer_inflate_[idx_inf] = 1;
+                    }
+                }
+
+          } else{
+          //// /// laser data over the field of view (create virtual wall)
+                for (double kk=-(pt.z)-1; kk<(4-pt.z) ; kk=kk+mp_.resolution_){      
+                    p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z+kk;            
+                    /* point inside update range */
+                    Eigen::Vector3d devi = p3d - md_.camera_pos_;
+                    if (fabs(devi(0)) < 0.4 && fabs(devi(1)) < 0.4 ) continue;
+                    // Eigen::Vector3d devi = p3d ;
+                    Eigen::Vector3i inf_pt;
+                    // if (fabs(devi(0)) < mp_.local_update_range_(0)-mp_.obstacles_inflation_-mp_.resolution_ && fabs(devi(1)) < mp_.local_update_range_(1)-mp_.obstacles_inflation_ -mp_.resolution_&&
+                    if (fabs(devi(0)) < mp_.local_update_range_(0) && fabs(devi(1)) < mp_.local_update_range_(1)&&
+                        fabs(devi(2)) < mp_.local_update_range_(2)) {
+                    
+                      /* inflate the point */
+                      for (int x = -inf_step; x <= inf_step; ++x)
+                        for (int y = -inf_step; y <= inf_step; ++y)
+                          for (int z = -inf_step; z <= inf_step; ++z) {
+
+                            p3d_inf(0) = pt.x + x * mp_.resolution_;
+                            p3d_inf(1) = pt.y + y * mp_.resolution_;
+                            p3d_inf(2) = pt.z +kk+ z * mp_.resolution_;
+
+                            max_x = max(max_x, p3d_inf(0));
+                            max_y = max(max_y, p3d_inf(1));
+                            max_z = max(max_z, p3d_inf(2));
+
+                            min_x = min(min_x, p3d_inf(0));
+                            min_y = min(min_y, p3d_inf(1));
+                            min_z = min(min_z, p3d_inf(2));
+
+                            posToIndex(p3d_inf, inf_pt);
+
+                            if (!isInMap(inf_pt)) continue;
+                            //skip points inside of robot dimension 
+                            Eigen::Vector3d devi_local =  p3d_inf-md_.camera_pos_;      
+                            if (fabs(devi_local(0)) < 0.6 && fabs(devi_local(1)) < 0.6 && fabs(devi_local(2))< 0.6) continue;
+
+                            int idx_inf = toAddress(inf_pt);
+
+                            md_.occupancy_buffer_inflate_[idx_inf] = 1;
+                          }
+                      }
+                  }
+              }
+        } 
+      }
+
+
+      //////////////////////////////
+  // prev_global_direction;
+      // distance_global_direction;
+      // left_distance_global_direction;
+      // right_distance_global_direction;
+  // double yaw_to_global_direction = current_yaw - global_direction;
+  // truncateYaw(yaw_to_global_direction);
+  // if(yaw_to_global_direction < 0.3){
+
+      if( global_direction >= -PI/4.0 && global_direction <= PI/4.0){
+           // current direction = go to +x direction         
+            if(fabs(max_y_devi) > fabs(min_y_devi)){
+                if(fabs(max_x_devi) < fabs(max_y_devi)){
+                    global_direction = PI/2.0; // go to +y direction 
+                    global_direction_max_distance = max_y_devi;
+                  }
+            }else{
+              if(fabs(max_x_devi) < fabs(min_y_devi)){
+                   global_direction = -PI/2.0; // go to -y direction 
+                   global_direction_max_distance = min_y_devi;
+              }
+            }
+      }else if(global_direction >= -PI/4.0+PI/2.0 && global_direction <= PI/4.0+PI/2.0){
+        // current direction = go to +y direction 
+          if(fabs(max_x_devi) > fabs(min_x_devi)){          
+                if(fabs(max_y_devi) < fabs(max_x_devi)){
+                    global_direction = 0.0; // go to +x direction 
+                    global_direction_max_distance = max_x_devi;
+                  }
+            }else{
+              if(fabs(max_y_devi) < fabs(min_x_devi)){
+                   global_direction = -PI; // go to -x direction
+                    global_direction_max_distance = min_x_devi;
+              }
+            }
+      }else if(global_direction >= PI-PI/4.0 && global_direction <= -PI+PI/4.0){
+        // current direction = go to -x direction 
+          if(fabs(max_y_devi) > fabs(min_y_devi)){          
+                if(fabs(min_x_devi) < fabs(max_y_devi)){
+                    global_direction = PI/2.0; // go to +y direction 
+                     global_direction_max_distance = max_y_devi;
+                  }
+            }else{
+              if(fabs(min_x_devi) < fabs(min_y_devi)){
+                   global_direction = -PI/2.0; // go to -y direction
+                    global_direction_max_distance = min_y_devi;
+              }
+            }
+      }else if(global_direction >= -PI/4.0-PI/2.0 && global_direction <= PI/4.0-PI/2.0){
+        // current direction = go to -y direction 
+          if(fabs(max_x_devi) > fabs(min_x_devi)){          
+                  if(fabs(min_y_devi) < fabs(max_x_devi)){
+                      global_direction = 0.0; // go to +x direction 
+                      global_direction_max_distance = max_x_devi;
+                    }
+              }else{
+                if(fabs(min_y_devi) < fabs(min_x_devi)){
+                    global_direction = -PI; // go to -x direction
+                     global_direction_max_distance = min_x_devi;
+                }
+              }
+      }
+// }
+  ////////////////////////
+
+
+  } catch (tf::TransformException& ex) {
+      ROS_ERROR_STREAM(
+          "Error getting TF transform from sensor sdata: " << ex.what());
+          lidar_sub_done =false;
+      return;
+    }
+
+  
+  inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);  
+
+ 
+
   min_x = min(min_x, md_.camera_pos_(0));
   min_y = min(min_y, md_.camera_pos_(1));
   min_z = min(min_z, md_.camera_pos_(2));
@@ -1949,32 +1343,49 @@ inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
 
   boundIndex(md_.local_bound_min_);
   boundIndex(md_.local_bound_max_);
-
+  
   md_.esdf_need_update_ = true;
+
+  
+  // if(trigger_ && map_update_off_switch){    
+ if(map_update_off_switch){
+    ros::Time plan_init_time_ = ros::Time::now();
+    while(!md_.esdf_need_update_){
+        double tmp_tt = (ros::Time::now()-plan_init_time_).toSec();               
+        if(tmp_tt > 1){  
+          ROS_INFO("esdf has not beed updated in time");        
+          break;
+        }
+        ros::Duration(0.01).sleep();         
+    }     
+    map_update_done = true;
+    // ROS_INFO("map update is done");
+  }
+  
+ 
+  // }else{
+  //   map_update_done_esdf_request = true;
+  // }
   // cur_map_fill = true;
 
+   //  if(map_update_done_esdf_request){
+  //     map_update_done = true;
+  // }
+
 
 }
 
-void SDFMap::depthOdomCallback(const sensor_msgs::ImageConstPtr& img,
-                               const nav_msgs::OdometryConstPtr& odom) {
-  /* get pose */
-  md_.camera_pos_(0) = odom->pose.pose.position.x;
-  md_.camera_pos_(1) = odom->pose.pose.position.y;
-  md_.camera_pos_(2) = odom->pose.pose.position.z;
-  md_.camera_q_ = Eigen::Quaterniond(odom->pose.pose.orientation.w, odom->pose.pose.orientation.x,
-                                     odom->pose.pose.orientation.y, odom->pose.pose.orientation.z);
-
-  /* get depth image */
-  cv_bridge::CvImagePtr cv_ptr;
-  cv_ptr = cv_bridge::toCvCopy(img, img->encoding);
-  if (img->encoding == sensor_msgs::image_encodings::TYPE_32FC1) {
-    (cv_ptr->image).convertTo(cv_ptr->image, CV_16UC1, mp_.k_depth_scaling_factor_);
-  }
-  cv_ptr->image.copyTo(md_.depth_image_);
-
-  md_.occ_need_update_ = true;
+double SDFMap::get_global_direction(){
+  return global_direction;
 }
+
+double SDFMap::get_global_direction_max_distance(){
+  return global_direction_max_distance;
+}
+
+
+
+
 
 void SDFMap::depthCallback(const sensor_msgs::ImageConstPtr& img) {
   std::cout << "depth: " << img->header.stamp << std::endl;
@@ -1989,18 +1400,19 @@ void SDFMap::poseCallback(const geometry_msgs::PoseStampedConstPtr& pose) {
 }
 
 void SDFMap::fix_map_update(){
-   map_reset_done = false;
-   map_reset_switch = true;
+  //  map_reset_done = false;
+  //  map_reset_switch = true;
    map_update_done = false; 
    map_update_off_switch = true;  
 }
 bool SDFMap::get_map_update_done(){
   return map_update_done;
 }
-bool SDFMap::rerun_map_update(){
-    // map_reset_done = false;
-   map_reset_switch = false;
-  //  map_update_done = false; 
+void SDFMap::rerun_map_update(){
+    // return;
+  //  map_reset_switch = false;
+  map_update_done = false; 
    map_update_off_switch = false;  
+   
 }
 // SDFMap

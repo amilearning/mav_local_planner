@@ -87,6 +87,14 @@ void FastPlannerManager::initPlanModules(ros::NodeHandle& nh, ros::NodeHandle& m
     topo_prm_->init(nh);
   }
 }
+// get_global_direction
+double FastPlannerManager::get_global_direction(){
+  return sdf_map_->get_global_direction(); 
+}
+
+double FastPlannerManager::get_global_direction_max_distance(){
+  return sdf_map_->get_global_direction_max_distance(); 
+}
 
 void FastPlannerManager::setGlobalWaypoints(vector<Eigen::Vector3d>& waypoints) {
   plan_data_.global_waypoints_ = waypoints;
@@ -128,20 +136,25 @@ bool FastPlannerManager::kinodynamicReplan(Eigen::Vector3d start_pt, Eigen::Vect
                                            Eigen::Vector3d start_acc, Eigen::Vector3d end_pt,
                                            Eigen::Vector3d end_vel) {
     
-                                             
+    // sdf_map_->rerun_map_update();                                      
     sdf_map_->fix_map_update(); 
     bool get_map_update_done = sdf_map_->get_map_update_done();
-    for(int i=0;i<5;i++){
-        if(get_map_update_done){
+    ros::Time plan_init_time_ = ros::Time::now();
+    while(!get_map_update_done){
+        double tmp_tt = (ros::Time::now()-plan_init_time_).toSec();        
+         get_map_update_done = sdf_map_->get_map_update_done();
+        if(tmp_tt > 1){          
           break;
-      }
-        ros::Duration(0.05).sleep();         
+        }
+        ros::Duration(0.01).sleep();         
     } 
+    
     if(!get_map_update_done){
+      ROS_INFO("map update time out");    
+      sdf_map_->rerun_map_update();  
       return false;
     }
-    
-  
+      
     
   std::cout << "[kino replan]: -----------------------" << std::endl;
   cout << "start: " << start_pt.transpose() << ", " << start_vel.transpose() << ", "
@@ -170,10 +183,9 @@ bool FastPlannerManager::kinodynamicReplan(Eigen::Vector3d start_pt, Eigen::Vect
   kino_path_finder_->reset();
 
   int status = kino_path_finder_->search(start_pt, start_vel, start_acc, end_pt, end_vel, true);
-
+  
   if (status == KinodynamicAstar::NO_PATH) {
-    cout << "[kino replan]: kinodynamic search fail!" << endl;
-
+    cout << "[kino replan]: kinodynamic search fail!" << endl;    
     // retry searching with discontinuous initial state
     kino_path_finder_->reset();
     status = kino_path_finder_->search(start_pt, start_vel, start_acc, end_pt, end_vel, false);
