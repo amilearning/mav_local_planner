@@ -87,6 +87,14 @@ void FastPlannerManager::initPlanModules(ros::NodeHandle& nh, ros::NodeHandle& m
     topo_prm_->init(nh);
   }
 }
+// get_global_direction
+double FastPlannerManager::get_global_direction(){
+  return sdf_map_->get_global_direction(); 
+}
+
+double FastPlannerManager::get_global_direction_max_distance(){
+  return sdf_map_->get_global_direction_max_distance(); 
+}
 
 void FastPlannerManager::setGlobalWaypoints(vector<Eigen::Vector3d>& waypoints) {
   plan_data_.global_waypoints_ = waypoints;

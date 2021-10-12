@@ -86,7 +86,9 @@ private:
   double no_replan_thresh_, replan_thresh_;
   double waypoints_[50][3];
   int waypoint_num_;
-
+    double global_direction, prev_global_direction, global_direction_max_distance;
+  bool trigger_waypoints;
+  
   /* planning data */
   bool trigger_, have_target_, have_odom_;
   FSM_EXEC_STATE exec_state_;

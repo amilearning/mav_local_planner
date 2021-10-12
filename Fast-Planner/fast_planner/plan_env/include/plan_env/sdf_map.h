@@ -34,6 +34,7 @@
 #include <random>
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/LaserScan.h>
+#include <sensor_msgs/Range.h>
 #include <queue>
 #include <ros/ros.h>
 #include <tuple>
@@ -46,6 +47,9 @@
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/conditional_removal.h>
 #include <pcl/filters/extract_indices.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/filter.h>
+#include <std_msgs/Float32.h>
 
 
 #include <message_filters/subscriber.h>
@@ -60,7 +64,7 @@
 #include<laser_geometry/laser_geometry.h>
 
 #define logit(x) (log((x) / (1 - (x))))
-
+#define PI 3.14159265
 using namespace std;
 
 // voxel hashing
@@ -187,10 +191,12 @@ public:
   void resetBuffer();
   void resetBuffer(Eigen::Vector3d min, Eigen::Vector3d max);
    inline void truncateYaw(double& x) {
-    if (x > M_PI)
-      x -= 2 * M_PI;
-    else if (x < -M_PI)
-      x += 2 * M_PI;
+    while(x>PI || x<-PI){
+          if (x > PI)
+            x -= 2 * PI;
+          else if (x < -PI)
+            x += 2 * PI;
+      }
   }
 
   inline void posToIndex(const Eigen::Vector3d& pos, Eigen::Vector3i& id);
@@ -234,6 +240,16 @@ public:
   void publishUnknown();
   void publishDepth();
 
+  double global_direction;
+  double global_direction_max_distance;
+  double prev_global_direction;
+  double distance_global_direction; 
+  double left_distance_global_direction;
+  double right_distance_global_direction;
+  
+
+  double get_global_direction();
+  double get_global_direction_max_distance();
   void checkDist();
   bool hasDepthObservation();
   bool odomValid();
@@ -258,7 +274,7 @@ private:
                          const geometry_msgs::PoseStampedConstPtr& pose);
   void depthOdomCallback(const sensor_msgs::ImageConstPtr& img, const nav_msgs::OdometryConstPtr& odom);
 
-  void odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom, const sensor_msgs::LaserScanConstPtr &scan_in, const sensor_msgs::PointCloud2ConstPtr& img);
+  void odomLaserCloudCallback(const nav_msgs::OdometryConstPtr& odom, const sensor_msgs::LaserScanConstPtr &scan_in, const sensor_msgs::PointCloud2ConstPtr& img, const sensor_msgs::RangeConstPtr& oneDLidar);
 
   void depthCallback(const sensor_msgs::ImageConstPtr& img);
   void cloudCallback(const sensor_msgs::PointCloud2ConstPtr& img);
@@ -291,7 +307,7 @@ private:
   typedef shared_ptr<message_filters::Synchronizer<SyncPolicyImagePose>> SynchronizerImagePose;
   typedef shared_ptr<message_filters::Synchronizer<SyncPolicyImageOdom>> SynchronizerImageOdom;
 
-  typedef message_filters::sync_policies::ApproximateTime<nav_msgs::Odometry,sensor_msgs::LaserScan,sensor_msgs::PointCloud2>
+  typedef message_filters::sync_policies::ApproximateTime<nav_msgs::Odometry,sensor_msgs::LaserScan,sensor_msgs::PointCloud2,sensor_msgs::Range>
       SyncPolicyPoseLaserPoints;
   typedef shared_ptr<message_filters::Synchronizer<SyncPolicyPoseLaserPoints>> SynchronizerPoseLaserPoints;
 
@@ -302,6 +318,7 @@ private:
   shared_ptr<message_filters::Subscriber<nav_msgs::Odometry>> odom_sub_;
   shared_ptr<message_filters::Subscriber<sensor_msgs::LaserScan>> lidar_sub_;
   shared_ptr<message_filters::Subscriber<sensor_msgs::PointCloud2>> point_cloud_sub_;
+  shared_ptr<message_filters::Subscriber<sensor_msgs::Range>> oned_lidar_cloud_sub_;
   SynchronizerImagePose sync_image_pose_;
   SynchronizerImageOdom sync_image_odom_;
   SynchronizerPoseLaserPoints sync_pose_laser_points_;
@@ -309,6 +326,8 @@ private:
   ros::Subscriber indep_depth_sub_, indep_odom_sub_, indep_pose_sub_, indep_cloud_sub_, lidar_sub;
   ros::Publisher map_pub_, esdf_pub_, map_inf_pub_, update_range_pub_;
   ros::Publisher unknown_pub_, depth_pub_;
+  ros::Publisher goal_direction_pub_;
+
   ros::Timer occ_timer_, esdf_timer_, vis_timer_;
   double sensor_FOV;
   double current_yaw;

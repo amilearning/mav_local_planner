@@ -50,6 +50,8 @@ public:
   FastPlannerManager();
   ~FastPlannerManager();
 
+  double get_global_direction();
+  double get_global_direction_max_distance();
   /* main planning interface */
   bool kinodynamicReplan(Eigen::Vector3d start_pt, Eigen::Vector3d start_vel, Eigen::Vector3d start_acc,
                          Eigen::Vector3d end_pt, Eigen::Vector3d end_vel);
